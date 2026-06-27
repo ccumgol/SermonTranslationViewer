@@ -32,8 +32,9 @@ from fastapi.responses import FileResponse
 
 from audio_input import AudioCapture, AudioFanout, input_devices, queue_chunks
 from config import Settings
-from live_session import LiveTranslateSession, TranscriptEvent
+from live_session import TranscriptEvent
 from subtitle_engine import RollingTranscript, SubtitleEngine
+from translation_backend import GeminiBackend, TranslationBackend
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -98,7 +99,7 @@ class LangWorker:
 
     def __init__(
         self,
-        settings: Settings,
+        backend: TranslationBackend,
         fanout: AudioFanout,
         code: str,
         loop: asyncio.AbstractEventLoop,
@@ -110,7 +111,7 @@ class LangWorker:
         self._fanout = fanout
         self._queue = fanout.subscribe()
         self._engine = SubtitleEngine()
-        self._session = LiveTranslateSession(settings, target_language=code)
+        self._session = backend.make_session(code)
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -170,6 +171,7 @@ class AppState:
     capture: AudioCapture | None = None
     fanout: AudioFanout | None = None
     settings: Settings | None = None
+    backend: TranslationBackend | None = None
     loop: asyncio.AbstractEventLoop | None = None
     # 현재 활성 언어 목록: [{"code","color"}] (순서 = 행 순서)
     languages: list[dict] = field(default_factory=list)
@@ -226,7 +228,7 @@ def _sanitize_languages(raw: object) -> list[dict]:
 
 async def apply_languages(languages: list[dict]) -> None:
     """활성 언어 목록을 적용 — 필요한 워커를 시작/중지하고 레이아웃 갱신."""
-    assert state.settings is not None and state.fanout is not None
+    assert state.backend is not None and state.fanout is not None
     codes = [item["code"] for item in languages]
 
     # 더 이상 필요 없는 워커 중지
@@ -239,7 +241,7 @@ async def apply_languages(languages: list[dict]) -> None:
         code = item["code"]
         if code not in state.workers:
             worker = LangWorker(
-                state.settings, state.fanout, code, state.loop
+                state.backend, state.fanout, code, state.loop
             )
             state.workers[code] = worker
             worker.start()
@@ -256,6 +258,7 @@ async def apply_languages(languages: list[dict]) -> None:
 async def pipeline(settings: Settings) -> None:
     """오디오 캡처 + fan-out + 초기 언어 워커 기동."""
     state.settings = settings
+    state.backend = GeminiBackend(settings)
     state.loop = asyncio.get_running_loop()
     state.source_roller = RollingTranscript()
 
