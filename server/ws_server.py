@@ -33,6 +33,7 @@ from fastapi.responses import FileResponse
 from audio_input import AudioCapture, AudioFanout, input_devices, queue_chunks
 from config import Settings
 from live_session import TranscriptEvent
+from local_backend import LocalBackend
 from subtitle_engine import RollingTranscript, SubtitleEngine
 from translation_backend import GeminiBackend, TranslationBackend
 
@@ -258,7 +259,6 @@ async def apply_languages(languages: list[dict]) -> None:
 async def pipeline(settings: Settings) -> None:
     """오디오 캡처 + fan-out + 초기 언어 워커 기동."""
     state.settings = settings
-    state.backend = GeminiBackend(settings)
     state.loop = asyncio.get_running_loop()
     state.source_roller = RollingTranscript()
 
@@ -267,6 +267,14 @@ async def pipeline(settings: Settings) -> None:
         fanout = AudioFanout(capture)
         await fanout.start()
         state.fanout = fanout
+
+        # 백엔드 선택 (온라인 Gemini / 오프라인 로컬)
+        if settings.backend == "local":
+            state.backend = LocalBackend(fanout, state.loop)
+            print("[server] 백엔드: local (Qwen3-ASR + TranslateGemma)")
+        else:
+            state.backend = GeminiBackend(settings)
+            print("[server] 백엔드: gemini (온라인)")
 
         # 초기 언어 = .env 의 TARGET_LANGUAGE 1개
         await apply_languages(
