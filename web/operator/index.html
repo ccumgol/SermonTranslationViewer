@@ -63,6 +63,8 @@
       <span class="dot" id="conn-dot"></span>
       <span id="conn-text">연결 끊김</span>
       <span class="muted">|</span>
+      <span id="backend-badge" style="font-weight:600; padding:3px 10px; border-radius:6px; background:#2a3550;">백엔드 확인 중…</span>
+      <span class="muted">|</span>
       <span class="muted">송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용</span>
     </div>
 
@@ -157,6 +159,20 @@
     function setConnected(on) {
       dot.classList.toggle("on", on);
       connText.textContent = on ? "연결됨" : "연결 끊김 — 재연결 시도 중";
+    }
+
+    function applyBackendBadge(backend) {
+      const badge = document.getElementById("backend-badge");
+      if (backend === "local") {
+        badge.textContent = "🖥 로컬 (오프라인 · 비용 0)";
+        badge.style.background = "#1f5e3a";
+      } else if (backend === "gemini") {
+        badge.textContent = "☁️ 온라인 (Gemini API)";
+        badge.style.background = "#2a4a6e";
+      } else {
+        badge.textContent = "백엔드 미상";
+        badge.style.background = "#5a2327";
+      }
     }
 
     function refreshOutputBtn() {
@@ -320,6 +336,7 @@
         switch (msg.type) {
           case "init":
             outputEnabled = msg.output_enabled;
+            applyBackendBadge(msg.backend);
             refreshOutputBtn();
             syncStyleInputs(msg.style);
             populateDevices(msg.devices, msg.current_device);

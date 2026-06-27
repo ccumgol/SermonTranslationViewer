@@ -375,6 +375,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 "type": "init",
                 "style": state.style,
                 "output_enabled": state.output_enabled,
+                "backend": state.backend.name if state.backend else "unknown",
                 "languages": LANGUAGES,          # 선택 가능한 전체 언어
                 "layout": state.layout(),        # 현재 활성 언어(행) 구성
                 "default_colors": DEFAULT_COLORS,
