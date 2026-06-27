@@ -286,6 +286,9 @@ async def pipeline(settings: Settings) -> None:
         finally:
             for code in list(state.workers):
                 await state.workers.pop(code).stop()
+            close = getattr(state.backend, "aclose", None)
+            if close is not None:
+                await close()
             await fanout.stop()
 
 

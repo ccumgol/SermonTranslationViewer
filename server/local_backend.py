@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import numpy as np
@@ -71,6 +72,8 @@ class KoreanSTT:
         self._last_stable = ""
         self._buf = ""              # 문장 분절 대기 버퍼
         self._last_delta_at = 0.0
+        # STT 블로킹 추론은 전용 스레드풀에서 (종료 시 기본 풀과의 race 방지)
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stt")
 
     def subscribe(self, cb) -> None:
         self._subscribers.add(cb)
@@ -90,6 +93,8 @@ class KoreanSTT:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        # 진행 중인 추론 스레드는 강제 종료 불가 → 기다리지 않고 정리
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _publish(self, kind: str, text: str) -> None:
         for cb in list(self._subscribers):
@@ -98,8 +103,11 @@ class KoreanSTT:
     async def _run(self) -> None:
         import mlx_qwen3_asr as asr
 
+        loop = asyncio.get_running_loop()
         print(f"[local] Qwen3-ASR 모델 로딩… ({STT_MODEL})")
-        session = await asyncio.to_thread(asr.Session, STT_MODEL)
+        session = await loop.run_in_executor(
+            self._executor, asr.Session, STT_MODEL
+        )
         state = session.init_streaming(
             language="ko",
             context=STT_CONTEXT,
@@ -118,7 +126,9 @@ class KoreanSTT:
                     np.frombuffer(chunk, dtype=np.int16).astype(np.float32)
                     / 32768.0
                 )
-                state = await asyncio.to_thread(session.feed_audio, pcm, state)
+                state = await loop.run_in_executor(
+                    self._executor, session.feed_audio, pcm, state
+                )
                 self._emit(state)
         finally:
             idle.cancel()
@@ -267,14 +277,26 @@ class LocalBackend:
     ) -> None:
         self._stt = KoreanSTT(fanout, loop)
         # 번역 모델을 미리 메모리에 올려둔다(첫 문장 콜드 로딩 지연 방지)
-        loop.create_task(self._warmup())
+        self._warmup_task = loop.create_task(self._warmup())
 
     async def _warmup(self) -> None:
         try:
             await translate("주님께 영광을 돌립니다", "en")
             print(f"[local] 번역 모델 예열 완료 ({MT_MODEL})")
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             print(f"[local] 번역 모델 예열 실패(무시): {exc}")
 
     def make_session(self, target_language: str) -> LocalSession:
         return LocalSession(self._stt, target_language)
+
+    async def aclose(self) -> None:
+        """서버 종료 시 정리 — STT 태스크/스레드풀, 예열 태스크 정돈."""
+        if self._warmup_task is not None:
+            self._warmup_task.cancel()
+            try:
+                await self._warmup_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        await self._stt.stop()

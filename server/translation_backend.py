@@ -58,3 +58,7 @@ class GeminiBackend:
         return LiveTranslateSession(
             self._settings, target_language=target_language
         )
+
+    async def aclose(self) -> None:
+        """정리할 자원 없음 (각 세션은 워커가 stop)."""
+        return None
