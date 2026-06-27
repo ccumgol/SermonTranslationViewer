@@ -49,17 +49,25 @@ class Settings:
     ws_port: int
     # 장치 인덱스(int) 또는 장치 이름(str). 비우면 시스템 기본 입력(None).
     audio_input_device: str | int | None
+    # 번역 백엔드: "gemini"(온라인) 또는 "local"(오프라인). 운영자 화면에서 전환 가능.
+    backend: str
 
     @staticmethod
     def load() -> "Settings":
+        # 로컬 백엔드는 API 키가 없어도 동작해야 하므로 키는 선택적으로 읽는다.
+        backend = os.getenv("BACKEND", "gemini").strip().lower()
+        api_key = os.getenv("GEMINI_API_KEY", "")
+        if backend != "local" and not api_key:
+            api_key = _require("GEMINI_API_KEY")
         return Settings(
-            gemini_api_key=_require("GEMINI_API_KEY"),
+            gemini_api_key=api_key,
             model=os.getenv("GEMINI_MODEL", "gemini-3.5-live-translate-preview"),
             source_language=os.getenv("SOURCE_LANGUAGE", "ko"),
             target_language=os.getenv("TARGET_LANGUAGE", "en"),
             ws_host=os.getenv("WS_HOST", "0.0.0.0"),
             ws_port=int(os.getenv("WS_PORT", "8000")),
             audio_input_device=_parse_device(os.getenv("AUDIO_INPUT_DEVICE", "")),
+            backend=backend,
         )
 
 

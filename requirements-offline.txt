@@ -1,0 +1,11 @@
+# 오프라인(로컬) 백엔드 전용 추가 의존성.
+# 기본(클라우드) 사용자는 설치할 필요 없음. 오프라인 모드 쓸 때만:
+#   pip install -r requirements-offline.txt
+#
+# 추가로 시스템에 필요한 것:
+#   - Ollama        : brew install ollama   (그리고 `ollama pull translategemma:12b`)
+#   - ffmpeg        : brew install ffmpeg
+#   - Apple Silicon : Qwen3-ASR 는 MLX(Metal) 사용 — M1 이상 필요
+
+# 로컬 STT (Qwen3-ASR, Apple Silicon MLX)
+mlx-qwen3-asr>=0.3.5

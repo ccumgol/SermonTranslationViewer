@@ -32,8 +32,10 @@ from fastapi.responses import FileResponse
 
 from audio_input import AudioCapture, AudioFanout, input_devices, queue_chunks
 from config import Settings
-from live_session import LiveTranslateSession, TranscriptEvent
+from live_session import TranscriptEvent
+from local_backend import LocalBackend
 from subtitle_engine import RollingTranscript, SubtitleEngine
+from translation_backend import GeminiBackend, TranslationBackend
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -98,7 +100,7 @@ class LangWorker:
 
     def __init__(
         self,
-        settings: Settings,
+        backend: TranslationBackend,
         fanout: AudioFanout,
         code: str,
         loop: asyncio.AbstractEventLoop,
@@ -110,7 +112,7 @@ class LangWorker:
         self._fanout = fanout
         self._queue = fanout.subscribe()
         self._engine = SubtitleEngine()
-        self._session = LiveTranslateSession(settings, target_language=code)
+        self._session = backend.make_session(code)
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -170,6 +172,7 @@ class AppState:
     capture: AudioCapture | None = None
     fanout: AudioFanout | None = None
     settings: Settings | None = None
+    backend: TranslationBackend | None = None
     loop: asyncio.AbstractEventLoop | None = None
     # 현재 활성 언어 목록: [{"code","color"}] (순서 = 행 순서)
     languages: list[dict] = field(default_factory=list)
@@ -226,7 +229,7 @@ def _sanitize_languages(raw: object) -> list[dict]:
 
 async def apply_languages(languages: list[dict]) -> None:
     """활성 언어 목록을 적용 — 필요한 워커를 시작/중지하고 레이아웃 갱신."""
-    assert state.settings is not None and state.fanout is not None
+    assert state.backend is not None and state.fanout is not None
     codes = [item["code"] for item in languages]
 
     # 더 이상 필요 없는 워커 중지
@@ -239,7 +242,7 @@ async def apply_languages(languages: list[dict]) -> None:
         code = item["code"]
         if code not in state.workers:
             worker = LangWorker(
-                state.settings, state.fanout, code, state.loop
+                state.backend, state.fanout, code, state.loop
             )
             state.workers[code] = worker
             worker.start()
@@ -265,6 +268,14 @@ async def pipeline(settings: Settings) -> None:
         await fanout.start()
         state.fanout = fanout
 
+        # 백엔드 선택 (온라인 Gemini / 오프라인 로컬)
+        if settings.backend == "local":
+            state.backend = LocalBackend(fanout, state.loop)
+            print("[server] 백엔드: local (Qwen3-ASR + TranslateGemma)")
+        else:
+            state.backend = GeminiBackend(settings)
+            print("[server] 백엔드: gemini (온라인)")
+
         # 초기 언어 = .env 의 TARGET_LANGUAGE 1개
         await apply_languages(
             [{"code": settings.target_language, "color": DEFAULT_COLORS[0]}]
@@ -275,6 +286,9 @@ async def pipeline(settings: Settings) -> None:
         finally:
             for code in list(state.workers):
                 await state.workers.pop(code).stop()
+            close = getattr(state.backend, "aclose", None)
+            if close is not None:
+                await close()
             await fanout.stop()
 
 
@@ -364,6 +378,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 "type": "init",
                 "style": state.style,
                 "output_enabled": state.output_enabled,
+                "backend": state.backend.name if state.backend else "unknown",
                 "languages": LANGUAGES,          # 선택 가능한 전체 언어
                 "layout": state.layout(),        # 현재 활성 언어(행) 구성
                 "default_colors": DEFAULT_COLORS,
