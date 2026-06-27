@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -32,17 +31,19 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 STT_MODEL = os.getenv("STT_MODEL", "Qwen/Qwen3-ASR-0.6B")
 MT_MODEL = os.getenv("MT_MODEL", "translategemma:12b")
 
-# STT 도메인 컨텍스트(선택). ⚠️ 긴 단어 목록을 넣으면 Qwen3-ASR 이 그 단어들을
-# 그대로 전사 결과로 토해내는 역효과가 있으므로 기본값은 비워 둔다.
-# 꼭 필요하면 STT_CONTEXT 환경변수에 "짧게"(소수 핵심 용어만) 지정한다.
-STT_CONTEXT = os.getenv("STT_CONTEXT", "")
-
-# 문장 끝 경계 (마침표류). STT 가 구두점을 붙여주므로 이를 기준으로 분절.
-_SENTENCE_END = re.compile(r"[.!?。…！？]+")
-# 구두점 없이 길어지면 강제로 끊는 길이(한글 기준)
-_MAX_SENTENCE_CHARS = 60
-# 발화가 이 시간(초) 이상 멈추면 버퍼에 남은 미완성분을 번역으로 흘려보냄
-_IDLE_FLUSH_SEC = 2.5
+# ── VAD(침묵 감지) 기반 발화 구간 잘라내기 파라미터 ──
+# Qwen3-ASR 의 스트리밍 모드는 정확도가 크게 떨어지므로, 침묵으로 발화를 끊어
+# 그 구간 전체를 transcribe() 로 처리한다(= 전체파일급 정확도).
+SAMPLE_RATE = 16000
+# 이 RMS(정규화 -1~1) 미만은 침묵으로 본다. 마이크/환경에 맞춰 env 로 조정.
+SILENCE_RMS = float(os.getenv("STT_SILENCE_RMS", "0.015"))
+# 발화 후 이 시간(초) 이상 조용하면 한 구간으로 확정해 전사.
+MIN_SILENCE_SEC = float(os.getenv("STT_MIN_SILENCE_SEC", "0.7"))
+# 너무 짧은 잡음은 무시(실제 발화 최소 길이).
+MIN_SPEECH_SEC = 0.3
+# 쉼 없이 길게 말하면 이 길이에서 강제로 끊어 전사(지연 상한).
+MAX_SEGMENT_SEC = 12.0
+_CHUNK_SEC = 0.1  # fanout 청크 = 100ms
 
 # 번역 프롬프트에 쓸 언어 이름 (code → 영어 표기)
 LANGUAGE_NAMES = {
@@ -65,9 +66,6 @@ class KoreanSTT:
         self._loop = loop
         self._subscribers: set = set()
         self._task: asyncio.Task | None = None
-        self._last_stable = ""
-        self._buf = ""              # 문장 분절 대기 버퍼
-        self._last_delta_at = 0.0
         # STT 블로킹 추론은 전용 스레드풀에서 (종료 시 기본 풀과의 race 방지)
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stt")
 
@@ -104,17 +102,37 @@ class KoreanSTT:
         session = await loop.run_in_executor(
             self._executor, asr.Session, STT_MODEL
         )
-        state = session.init_streaming(
-            language="ko",
-            context=STT_CONTEXT,
-            chunk_size_sec=2.0,
-            max_context_sec=30.0,
-            finalization_mode="accuracy",
-        )
-        print("[local] STT 준비 완료 — 한국어 스트리밍 시작")
+        print("[local] STT 준비 완료 — 발화 구간 단위 전사 시작")
 
         queue = self._fanout.subscribe()
-        idle = asyncio.create_task(self._idle_flusher())
+        seg: list[np.ndarray] = []   # 현재 발화 구간 버퍼
+        in_speech = False
+        silence_sec = 0.0
+        speech_sec = 0.0
+
+        async def finalize() -> None:
+            nonlocal seg, in_speech, silence_sec, speech_sec
+            audio = np.concatenate(seg) if seg else None
+            seg = []
+            had_speech = speech_sec
+            in_speech = False
+            silence_sec = 0.0
+            speech_sec = 0.0
+            if audio is None or had_speech < MIN_SPEECH_SEC:
+                return
+            try:
+                result = await loop.run_in_executor(
+                    self._executor,
+                    lambda: session.transcribe(audio, language="ko"),
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(f"[local] 전사 실패: {exc}")
+                return
+            text = (getattr(result, "text", "") or "").strip()
+            if text:
+                self._publish("delta", text + " ")  # 한국어 화면 표시
+                self._publish("sentence", text)     # 번역 대상
+
         try:
             while True:
                 chunk = await queue.get()
@@ -122,64 +140,25 @@ class KoreanSTT:
                     np.frombuffer(chunk, dtype=np.int16).astype(np.float32)
                     / 32768.0
                 )
-                state = await loop.run_in_executor(
-                    self._executor, session.feed_audio, pcm, state
-                )
-                self._emit(state)
+                rms = float(np.sqrt(np.mean(pcm * pcm))) if pcm.size else 0.0
+                is_speech = rms >= SILENCE_RMS
+
+                if is_speech:
+                    in_speech = True
+                    seg.append(pcm)
+                    speech_sec += _CHUNK_SEC
+                    silence_sec = 0.0
+                elif in_speech:
+                    seg.append(pcm)             # 발화 뒤 짧은 침묵도 포함
+                    silence_sec += _CHUNK_SEC
+
+                seg_sec = len(seg) * _CHUNK_SEC
+                if in_speech and (
+                    silence_sec >= MIN_SILENCE_SEC or seg_sec >= MAX_SEGMENT_SEC
+                ):
+                    await finalize()
         finally:
-            idle.cancel()
             self._fanout.unsubscribe(queue)
-
-    def _emit(self, state) -> None:
-        stable = getattr(state, "stable_text", "") or ""
-        if stable == self._last_stable:
-            return
-        if not stable.startswith(self._last_stable):
-            # 드물게 재정렬되면 기준만 갱신
-            self._last_stable = stable
-            return
-        delta = stable[len(self._last_stable):]
-        self._last_stable = stable
-        if not delta:
-            return
-        self._last_delta_at = self._loop.time()
-        self._publish("delta", delta)          # 화면용 (즉시)
-        self._buf += delta
-        self._flush_sentences()                # 번역용 (문장 단위)
-
-    def _flush_sentences(self) -> None:
-        """버퍼에서 완성된 문장을 잘라 번역 대상으로 내보낸다."""
-        while True:
-            match = _SENTENCE_END.search(self._buf)
-            if match:
-                end = match.end()
-                sentence = self._buf[:end].strip()
-                self._buf = self._buf[end:]
-                if sentence:
-                    self._publish("sentence", sentence)
-                continue
-            # 구두점 없이 너무 길면 마지막 공백에서 끊어 흘려보냄
-            if len(self._buf) >= _MAX_SENTENCE_CHARS:
-                cut = self._buf.rfind(" ", 0, _MAX_SENTENCE_CHARS)
-                cut = cut if cut > 0 else _MAX_SENTENCE_CHARS
-                sentence = self._buf[:cut].strip()
-                self._buf = self._buf[cut:]
-                if sentence:
-                    self._publish("sentence", sentence)
-                continue
-            break
-
-    async def _idle_flusher(self) -> None:
-        """발화가 멈추면 버퍼에 남은 미완성 문장을 번역으로 흘려보낸다."""
-        while True:
-            await asyncio.sleep(1.0)
-            if (
-                self._buf.strip()
-                and self._loop.time() - self._last_delta_at >= _IDLE_FLUSH_SEC
-            ):
-                sentence = self._buf.strip()
-                self._buf = ""
-                self._publish("sentence", sentence)
 
 
 async def translate(text: str, target_code: str) -> str:
