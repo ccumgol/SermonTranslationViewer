@@ -32,14 +32,10 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 STT_MODEL = os.getenv("STT_MODEL", "Qwen/Qwen3-ASR-0.6B")
 MT_MODEL = os.getenv("MT_MODEL", "translategemma:12b")
 
-# STT 도메인 컨텍스트 — 자주 틀리는 성경 고유명사/용어를 힌트로 (환경변수로 덮어쓰기 가능)
-DEFAULT_STT_CONTEXT = (
-    "여호와 하나님 예수 그리스도 성령 아브람 아브라함 사래 사라 이삭 야곱 "
-    "다메섹 엘리에셀 가나안 애굽 다윗 모세 바울 베드로 요한 "
-    "창세기 출애굽기 시편 이사야 마태복음 요한복음 로마서 고린도전서 "
-    "복음 은혜 믿음 구원 십자가 부활 회개 축복 말씀 기도 예배"
-)
-STT_CONTEXT = os.getenv("STT_CONTEXT", DEFAULT_STT_CONTEXT)
+# STT 도메인 컨텍스트(선택). ⚠️ 긴 단어 목록을 넣으면 Qwen3-ASR 이 그 단어들을
+# 그대로 전사 결과로 토해내는 역효과가 있으므로 기본값은 비워 둔다.
+# 꼭 필요하면 STT_CONTEXT 환경변수에 "짧게"(소수 핵심 용어만) 지정한다.
+STT_CONTEXT = os.getenv("STT_CONTEXT", "")
 
 # 문장 끝 경계 (마침표류). STT 가 구두점을 붙여주므로 이를 기준으로 분절.
 _SENTENCE_END = re.compile(r"[.!?。…！？]+")
