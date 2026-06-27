@@ -1,4 +1,4 @@
-# 설교 실시간 영어 자막 시스템 (translateViewer)
+# 설교 실시간 다국어 자막 시스템 (translateViewer)
 
 교회 믹서로 들어온 한국어 설교 음성을 **Gemini Live Translate** 로 실시간 영어
 번역하여, 프로젝터/OBS 화면에 자막으로 송출하는 시스템입니다.
