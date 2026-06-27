@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sermon Subtitle</title>
+  <style>
+    /* 프로젝터용 송출 화면: 단색 배경 + 언어별 행.
+       언어가 1개면 화면 전체, 2~3개면 화면을 2~3행으로 나눠 표시한다. */
+    html, body {
+      margin: 0; height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: "Helvetica Neue", Arial, "Noto Sans KR", sans-serif;
+    }
+    /* 화면 전체를 세로로 나눠 각 언어 행을 동일 높이로 배치 */
+    #stage {
+      position: fixed; inset: 0;
+      box-sizing: border-box;
+      padding: 4vw;
+      display: flex;
+      flex-direction: column;
+    }
+    /* 각 언어 행: 텍스트를 행 하단에 '절대 고정'하고 위로 넘치면 위쪽만 잘림 */
+    .row {
+      position: relative;
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+    /* 행 구분선 (2개 이상일 때 행 사이 경계) */
+    .row + .row { border-top: 2px solid rgba(255, 255, 255, 0.18); }
+    .row-text {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;   /* 하단 고정 → 위로 차오름 */
+      font-weight: 700;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+    }
+    #fs-btn {
+      position: fixed; top: 14px; right: 14px;
+      width: 40px; height: 40px; border: none; border-radius: 8px;
+      background: rgba(255,255,255,0.15); color: #fff; font-size: 18px;
+      cursor: pointer; opacity: 0; transition: opacity 0.3s ease;
+    }
+    body:hover #fs-btn { opacity: 0.85; }
+    :fullscreen #fs-btn { display: none; }
+  </style>
+</head>
+<body>
+  <button id="fs-btn" title="전체화면 토글 (더블클릭으로도 가능)">⛶</button>
+  <div id="stage"></div>
+  <script>
+    const stage = document.getElementById("stage");
+    const fsBtn = document.getElementById("fs-btn");
+    let outputEnabled = true;
+    let fontSize = 4;                 // vw
+    const rowEls = {};               // code -> .row-text 엘리먼트
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+    fsBtn.onclick = toggleFullscreen;
+    document.addEventListener("dblclick", toggleFullscreen);
+
+    // 언어 레이아웃에 맞춰 행을 다시 만든다
+    function buildLayout(layout) {
+      stage.innerHTML = "";
+      for (const key in rowEls) delete rowEls[key];
+      (layout || []).forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        const text = document.createElement("div");
+        text.className = "row-text";
+        text.style.color = item.color;
+        text.style.fontSize = `${fontSize}vw`;
+        text.textContent = outputEnabled ? (item.text || " ") : " ";
+        row.appendChild(text);
+        stage.appendChild(row);
+        rowEls[item.code] = text;
+      });
+    }
+
+    function renderLang(code, text) {
+      const el = rowEls[code];
+      if (!el) return;
+      el.textContent = (outputEnabled && text) ? text : " ";
+    }
+
+    function clearAll() {
+      for (const code in rowEls) rowEls[code].textContent = " ";
+    }
+
+    function applyStyle(s) {
+      if (!s) return;
+      if (s.fontSize != null) {
+        fontSize = s.fontSize;
+        for (const code in rowEls) rowEls[code].style.fontSize = `${fontSize}vw`;
+      }
+      if (s.bgColor != null) document.body.style.background = s.bgColor;
+      if (s.padding != null) stage.style.padding = `${s.padding}vw`;
+    }
+
+    function connect() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        switch (msg.type) {
+          case "init":
+            outputEnabled = msg.output_enabled;
+            applyStyle(msg.style);
+            buildLayout(msg.layout);
+            break;
+          case "layout":
+            buildLayout(msg.layout);
+            break;
+          case "subtitle":
+            renderLang(msg.lang, msg.text);
+            break;
+          case "reset":
+            clearAll();
+            break;
+          case "output_state":
+            outputEnabled = msg.enabled;
+            if (!outputEnabled) clearAll();
+            break;
+          case "style":
+            applyStyle(msg.style);
+            break;
+        }
+      };
+      ws.onclose = () => setTimeout(connect, 1500);
+      ws.onerror = () => ws.close();
+    }
+    connect();
+  </script>
+</body>
+</html>

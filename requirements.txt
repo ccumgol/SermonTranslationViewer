@@ -1,0 +1,13 @@
+# Gemini Live API SDK
+google-genai>=1.0.0
+
+# 오디오 입력 캡처 (PortAudio 기반)
+sounddevice>=0.4.6
+numpy>=1.24
+
+# 웹서버 + WebSocket (자막 송출)
+fastapi>=0.110
+uvicorn[standard]>=0.27
+
+# 환경변수(.env) 로드
+python-dotenv>=1.0

@@ -1,0 +1,30 @@
+# ── 민감 정보 / 개인정보 (절대 커밋 금지) ──────────────────
+# API 키, 비밀 설정
+.env
+.env.*
+!.env.example
+
+# 설교 원고, 실시간 전사/번역 로그, 용어집 등 교회 내부 자료
+data/sermons/*
+data/logs/*
+data/glossary/*
+!data/**/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ── OS / 에디터 ───────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+
+# ── Claude Code 로컬 설정 (개인 머신 전용) ────────────────
+.claude/

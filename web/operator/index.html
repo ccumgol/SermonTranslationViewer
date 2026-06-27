@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>운영자 대시보드</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; padding: 24px;
+      background: #0f1115; color: #e6e8ec;
+      font-family: -apple-system, "Noto Sans KR", sans-serif;
+    }
+    h1 { font-size: 18px; margin: 0 0 16px; font-weight: 600; }
+    .grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+    .card {
+      background: #171a21; border: 1px solid #262b36;
+      border-radius: 12px; padding: 16px;
+    }
+    .label { font-size: 12px; color: #8a93a6; margin-bottom: 8px; }
+    .source { font-size: 20px; line-height: 1.5; min-height: 2em; white-space: pre-wrap; }
+    .status { display: flex; gap: 16px; align-items: center; font-size: 13px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #d0464a; }
+    .dot.on { background: #43c06a; }
+    .full { grid-column: 1 / -1; }
+    .muted { color: #8a93a6; }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .ctl-group { display: flex; flex-direction: column; gap: 4px; }
+    .ctl-group .label { margin: 0; }
+    button {
+      font-size: 14px; font-weight: 600; padding: 10px 16px;
+      border-radius: 8px; border: 1px solid #3a4150; cursor: pointer;
+      background: #232936; color: #e6e8ec;
+    }
+    button:hover { background: #2c3342; }
+    button.danger { background: #5a2327; border-color: #7a2f35; }
+    button.danger:hover { background: #6e2a30; }
+    button.primary { background: #1f6f43; border-color: #2a8a54; }
+    button.primary:hover { background: #25804e; }
+    input[type="range"] { width: 140px; }
+    input[type="color"] {
+      width: 44px; height: 32px; padding: 0; border: 1px solid #3a4150;
+      border-radius: 6px; background: none; cursor: pointer;
+    }
+    .val { font-size: 12px; color: #b8c0cf; min-width: 38px; display: inline-block; }
+    select {
+      font-size: 14px; padding: 9px 10px; border-radius: 8px;
+      border: 1px solid #3a4150; background: #232936; color: #e6e8ec;
+      min-width: 200px; cursor: pointer;
+    }
+    .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    #device-msg { font-size: 12px; color: #e0a14a; }
+    .slot { display: flex; gap: 8px; align-items: flex-end; }
+    .target-line { font-size: 21px; line-height: 1.5; min-height: 1.6em; white-space: pre-wrap; margin-bottom: 8px; }
+    .target-tag { font-size: 12px; color: #8a93a6; }
+  </style>
+</head>
+<body>
+  <h1>설교 실시간 번역 — 운영자 대시보드</h1>
+  <div class="grid">
+    <div class="card full status">
+      <span class="dot" id="conn-dot"></span>
+      <span id="conn-text">연결 끊김</span>
+      <span class="muted">|</span>
+      <span class="muted">송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용</span>
+    </div>
+
+    <!-- 오디오 소스 선택 -->
+    <div class="card full">
+      <div class="label">오디오 입력 소스</div>
+      <div class="row">
+        <div class="ctl-group" style="flex:1; min-width:260px;">
+          <span class="label">현재 입력 장치</span>
+          <select id="device-select"></select>
+        </div>
+        <button id="btn-refresh-devices">🔄 목록 새로고침</button>
+        <span id="device-msg"></span>
+      </div>
+    </div>
+
+    <!-- 번역 언어 선택 (최대 3개, 행별 색상) -->
+    <div class="card full">
+      <div class="label">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
+      <div class="row" id="lang-slots"></div>
+      <div class="muted" id="language-msg" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- 제어 패널 -->
+    <div class="card full">
+      <div class="label">송출 제어</div>
+      <div class="controls">
+        <button id="btn-open-projection" class="primary">🖥 송출 창 열기</button>
+        <button id="btn-reset">↺ 화면 리셋</button>
+        <button id="btn-output" class="danger">⏹ 송출 종료</button>
+
+        <div class="ctl-group">
+          <span class="label">폰트 크기 <span class="val" id="font-val">4vw</span></span>
+          <input type="range" id="font-size" min="2" max="7" step="0.1" value="4" />
+        </div>
+
+        <div class="ctl-group">
+          <span class="label">배경색</span>
+          <input type="color" id="bg-color" value="#000000" />
+        </div>
+
+        <div class="ctl-group">
+          <span class="label">안여백(테두리 간격) <span class="val" id="pad-val">4vw</span></span>
+          <input type="range" id="padding" min="0" max="12" step="0.5" value="4" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">한국어 인식 (입력 전사)</div>
+      <div class="source" id="source">—</div>
+    </div>
+
+    <div class="card">
+      <div class="label">번역 (송출 자막)</div>
+      <div id="target-list"></div>
+    </div>
+  </div>
+
+  <script>
+    const sourceEl = document.getElementById("source");
+    const targetList = document.getElementById("target-list");
+    const dot = document.getElementById("conn-dot");
+    const connText = document.getElementById("conn-text");
+    const btnReset = document.getElementById("btn-reset");
+    const btnOutput = document.getElementById("btn-output");
+    const btnOpenProjection = document.getElementById("btn-open-projection");
+    const fontSize = document.getElementById("font-size");
+    const fontVal = document.getElementById("font-val");
+    const bgColor = document.getElementById("bg-color");
+    const padding = document.getElementById("padding");
+    const padVal = document.getElementById("pad-val");
+    const deviceSelect = document.getElementById("device-select");
+    const btnRefreshDevices = document.getElementById("btn-refresh-devices");
+    const deviceMsg = document.getElementById("device-msg");
+    const langSlots = document.getElementById("lang-slots");
+    const languageMsg = document.getElementById("language-msg");
+
+    let socket = null;
+    let outputEnabled = true;
+    let allLanguages = [];     // 선택 가능한 전체 언어
+    let defaultColors = ["#ffffff", "#ffd54a", "#5ad1ff"];
+    let maxLanguages = 3;
+    const targetEls = {};      // code -> 번역 표시 엘리먼트
+
+    function send(obj) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(obj));
+      }
+    }
+
+    function setConnected(on) {
+      dot.classList.toggle("on", on);
+      connText.textContent = on ? "연결됨" : "연결 끊김 — 재연결 시도 중";
+    }
+
+    function refreshOutputBtn() {
+      if (outputEnabled) {
+        btnOutput.textContent = "⏹ 송출 종료";
+        btnOutput.className = "danger";
+      } else {
+        btnOutput.textContent = "▶ 송출 재개";
+        btnOutput.className = "primary";
+      }
+    }
+
+    function syncStyleInputs(s) {
+      if (!s) return;
+      if (s.fontSize != null) { fontSize.value = s.fontSize; fontVal.textContent = `${s.fontSize}vw`; }
+      if (s.bgColor != null) bgColor.value = s.bgColor;
+      if (s.padding != null) { padding.value = s.padding; padVal.textContent = `${s.padding}vw`; }
+    }
+
+    // ── 오디오 소스 ──
+    function populateDevices(devices, current) {
+      deviceSelect.innerHTML = "";
+      (devices || []).forEach((d) => {
+        const opt = document.createElement("option");
+        opt.value = d.index;
+        opt.textContent = `[${d.index}] ${d.name} (${d.channels}ch in)`;
+        if (current != null && String(current) === String(d.index)) opt.selected = true;
+        deviceSelect.appendChild(opt);
+      });
+    }
+    deviceSelect.onchange = () => {
+      deviceMsg.textContent = "";
+      send({ cmd: "set_device", device: parseInt(deviceSelect.value, 10) });
+    };
+    btnRefreshDevices.onclick = () => send({ cmd: "list_devices" });
+
+    // ── 번역 언어 슬롯 (3개) ──
+    // 각 슬롯: 언어 select + 색상. 슬롯1은 필수, 2·3은 "(사용 안 함)" 가능.
+    function buildLangSlots(layout) {
+      langSlots.innerHTML = "";
+      for (let i = 0; i < maxLanguages; i++) {
+        const active = layout[i];
+        const slot = document.createElement("div");
+        slot.className = "ctl-group";
+
+        const labelSpan = document.createElement("span");
+        labelSpan.className = "label";
+        labelSpan.textContent = `${i + 1}번 언어` + (i === 0 ? " (필수)" : " (선택)");
+
+        const inner = document.createElement("div");
+        inner.className = "slot";
+
+        const sel = document.createElement("select");
+        sel.dataset.slot = i;
+        if (i > 0) {
+          const none = document.createElement("option");
+          none.value = ""; none.textContent = "(사용 안 함)";
+          sel.appendChild(none);
+        }
+        allLanguages.forEach((l) => {
+          const opt = document.createElement("option");
+          opt.value = l.code; opt.textContent = l.label;
+          if (active && active.code === l.code) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        if (!active && i > 0) sel.value = "";
+
+        const color = document.createElement("input");
+        color.type = "color";
+        color.dataset.slot = i;
+        color.value = active ? active.color : defaultColors[i] || "#ffffff";
+
+        sel.onchange = sendLanguages;
+        color.oninput = sendLanguages;
+
+        inner.appendChild(sel);
+        inner.appendChild(color);
+        slot.appendChild(labelSpan);
+        slot.appendChild(inner);
+        langSlots.appendChild(slot);
+      }
+    }
+
+    function sendLanguages() {
+      const selects = langSlots.querySelectorAll("select");
+      const colors = langSlots.querySelectorAll('input[type="color"]');
+      const seen = new Set();
+      const languages = [];
+      selects.forEach((sel, i) => {
+        const code = sel.value;
+        if (code && !seen.has(code)) {
+          seen.add(code);
+          languages.push({ code, color: colors[i].value });
+        }
+      });
+      if (languages.length === 0) return;  // 최소 1개
+      languageMsg.textContent = "언어 적용 중… (세션 재시작)";
+      send({ cmd: "set_languages", languages });
+    }
+
+    // 번역 표시(운영자) 영역을 레이아웃에 맞춰 구성
+    function buildTargetList(layout) {
+      targetList.innerHTML = "";
+      for (const key in targetEls) delete targetEls[key];
+      (layout || []).forEach((item) => {
+        const tag = document.createElement("div");
+        tag.className = "target-tag";
+        tag.textContent = item.label;
+        const line = document.createElement("div");
+        line.className = "target-line";
+        line.style.color = item.color;
+        line.textContent = item.text || "—";
+        targetList.appendChild(tag);
+        targetList.appendChild(line);
+        targetEls[item.code] = line;
+      });
+    }
+
+    function applyLayout(layout) {
+      buildLangSlots(layout);
+      buildTargetList(layout);
+    }
+
+    // ── 송출 창 열기 ──
+    btnOpenProjection.onclick = () => {
+      const win = window.open(
+        "/", "sermon_projection",
+        "popup=yes,width=1280,height=720,menubar=no,toolbar=no,location=no,status=no"
+      );
+      if (win) win.focus();
+    };
+
+    // ── 제어 동작 ──
+    btnReset.onclick = () => send({ cmd: "reset" });
+    btnOutput.onclick = () => {
+      outputEnabled = !outputEnabled;
+      refreshOutputBtn();
+      send({ cmd: "set_output", enabled: outputEnabled });
+    };
+
+    function sendStyle() {
+      send({
+        cmd: "set_style",
+        style: {
+          fontSize: parseFloat(fontSize.value),
+          bgColor: bgColor.value,
+          padding: parseFloat(padding.value),
+        },
+      });
+    }
+    fontSize.oninput = () => { fontVal.textContent = `${fontSize.value}vw`; sendStyle(); };
+    padding.oninput = () => { padVal.textContent = `${padding.value}vw`; sendStyle(); };
+    bgColor.oninput = sendStyle;
+
+    function connect() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      socket = new WebSocket(`${proto}://${location.host}/ws`);
+      socket.onopen = () => setConnected(true);
+      socket.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        switch (msg.type) {
+          case "init":
+            outputEnabled = msg.output_enabled;
+            refreshOutputBtn();
+            syncStyleInputs(msg.style);
+            populateDevices(msg.devices, msg.current_device);
+            allLanguages = msg.languages || [];
+            defaultColors = msg.default_colors || defaultColors;
+            maxLanguages = msg.max_languages || 3;
+            applyLayout(msg.layout || []);
+            break;
+          case "layout":
+            languageMsg.textContent = "언어를 적용했습니다.";
+            applyLayout(msg.layout || []);
+            break;
+          case "device_list":
+            populateDevices(msg.devices, msg.current);
+            deviceMsg.textContent = "목록을 새로고침했습니다.";
+            break;
+          case "device_state":
+            deviceMsg.textContent = `입력 장치를 전환했습니다 → [${msg.current}]`;
+            break;
+          case "device_error":
+            deviceMsg.textContent = `⚠ 장치 전환 실패: ${msg.message}`;
+            break;
+          case "source":
+            sourceEl.textContent = msg.text || "—";
+            break;
+          case "subtitle":
+            if (targetEls[msg.lang]) targetEls[msg.lang].textContent = msg.text || "—";
+            break;
+          case "reset":
+            sourceEl.textContent = "—";
+            for (const code in targetEls) targetEls[code].textContent = "—";
+            break;
+          case "output_state":
+            outputEnabled = msg.enabled;
+            refreshOutputBtn();
+            break;
+          case "style":
+            syncStyleInputs(msg.style);
+            break;
+        }
+      };
+      socket.onclose = () => { setConnected(false); setTimeout(connect, 1500); };
+      socket.onerror = () => socket.close();
+    }
+    connect();
+  </script>
+</body>
+</html>
