@@ -63,7 +63,8 @@
       <span class="dot" id="conn-dot"></span>
       <span id="conn-text">연결 끊김</span>
       <span class="muted">|</span>
-      <span id="backend-badge" style="font-weight:600; padding:3px 10px; border-radius:6px; background:#2a3550;">백엔드 확인 중…</span>
+      <button id="backend-badge" title="클릭하면 온라인↔오프라인 전환" style="font-weight:600; padding:5px 12px; border-radius:6px; background:#2a3550; border:none;">백엔드 확인 중…</button>
+      <span id="backend-msg" class="muted"></span>
       <span class="muted">|</span>
       <span class="muted">송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용</span>
     </div>
@@ -161,19 +162,31 @@
       connText.textContent = on ? "연결됨" : "연결 끊김 — 재연결 시도 중";
     }
 
+    let currentBackend = null;
     function applyBackendBadge(backend) {
+      currentBackend = backend;
       const badge = document.getElementById("backend-badge");
       if (backend === "local") {
-        badge.textContent = "🖥 로컬 (오프라인 · 비용 0)";
+        badge.textContent = "🖥 로컬 (오프라인) — 클릭: 온라인 전환";
         badge.style.background = "#1f5e3a";
       } else if (backend === "gemini") {
-        badge.textContent = "☁️ 온라인 (Gemini API)";
+        badge.textContent = "☁️ 온라인 (Gemini) — 클릭: 오프라인 전환";
         badge.style.background = "#2a4a6e";
       } else {
         badge.textContent = "백엔드 미상";
         badge.style.background = "#5a2327";
       }
     }
+
+    document.getElementById("backend-badge").onclick = () => {
+      if (!currentBackend) return;
+      const next = currentBackend === "local" ? "gemini" : "local";
+      const msg = document.getElementById("backend-msg");
+      msg.textContent = next === "local"
+        ? "오프라인으로 전환 중… (모델 로딩 ~10초)"
+        : "온라인으로 전환 중…";
+      send({ cmd: "set_backend", backend: next });
+    };
 
     function refreshOutputBtn() {
       if (outputEnabled) {
@@ -348,6 +361,13 @@
           case "layout":
             languageMsg.textContent = "언어를 적용했습니다.";
             applyLayout(msg.layout || []);
+            break;
+          case "backend_state":
+            applyBackendBadge(msg.backend);
+            document.getElementById("backend-msg").textContent = "전환 완료.";
+            break;
+          case "backend_error":
+            document.getElementById("backend-msg").textContent = "⚠ " + msg.message;
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);

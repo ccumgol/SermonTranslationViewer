@@ -227,6 +227,46 @@ def _sanitize_languages(raw: object) -> list[dict]:
     return cleaned
 
 
+def _build_backend(name: str) -> TranslationBackend:
+    """이름으로 백엔드 인스턴스 생성 (fanout/loop 가 준비된 뒤 호출)."""
+    if name == "local":
+        return LocalBackend(state.fanout, state.loop)
+    return GeminiBackend(state.settings)
+
+
+async def switch_backend(name: str) -> None:
+    """실행 중 백엔드(온라인/오프라인) 전환 — 같은 언어 구성을 유지한다."""
+    if name not in ("gemini", "local"):
+        return
+    if state.backend is not None and state.backend.name == name:
+        return
+    if name == "gemini" and not (state.settings and state.settings.gemini_api_key):
+        await hub.broadcast(
+            {
+                "type": "backend_error",
+                "message": "온라인 전환 실패: GEMINI_API_KEY 가 설정돼 있지 않습니다.",
+            }
+        )
+        return
+
+    languages = list(state.languages)
+    # 1) 기존 워커 모두 정지
+    for code in list(state.workers):
+        await state.workers.pop(code).stop()
+    # 2) 기존 백엔드 정리(로컬이면 STT 중지)
+    old = state.backend
+    close = getattr(old, "aclose", None) if old is not None else None
+    if close is not None:
+        await close()
+    # 3) 새 백엔드로 교체 후 같은 언어로 재시작
+    state.backend = _build_backend(name)
+    print(f"[server] 백엔드 전환 → {name}")
+    await apply_languages(languages)
+    await hub.broadcast({"type": "reset"})
+    await hub.broadcast({"type": "backend_state", "backend": name})
+    await hub.broadcast({"type": "layout", "layout": state.layout()})
+
+
 async def apply_languages(languages: list[dict]) -> None:
     """활성 언어 목록을 적용 — 필요한 워커를 시작/중지하고 레이아웃 갱신."""
     assert state.backend is not None and state.fanout is not None
@@ -339,6 +379,8 @@ async def _handle_command(cmd: dict) -> None:
         await apply_languages(languages)
         await hub.broadcast({"type": "reset"})
         await hub.broadcast({"type": "layout", "layout": state.layout()})
+    elif name == "set_backend":
+        await switch_backend(cmd.get("backend", ""))
     elif name == "set_device":
         await _switch_device(cmd.get("device"))
     elif name == "list_devices":
