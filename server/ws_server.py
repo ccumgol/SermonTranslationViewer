@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,9 +38,15 @@ from languages import LANGUAGES, VALID_CODES
 from live_session import TranscriptEvent
 from local_backend import LocalBackend
 from subtitle_engine import RollingTranscript, SubtitleEngine
+from transcript_logger import TranscriptLogger
 from translation_backend import GeminiBackend, TranslationBackend
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+# 온라인(Gemini) 분당 단가(USD, 입력+출력 전사 기준) — 예상 비용 표시용
+COST_PER_MIN = float(os.getenv("COST_PER_MIN", "0.037"))
+# 무발화 이 시간(분) 이상이면 "끄는 걸 잊지 않았나요?" 경고
+IDLE_WARN_MIN = float(os.getenv("IDLE_WARN_MIN", "5"))
 
 # 송출 화면 공유 스타일 (글자색은 언어별로 따로 지정하므로 여기엔 없음)
 DEFAULT_STYLE: dict = {
@@ -114,10 +122,13 @@ class LangWorker:
         )
 
     def _on_event(self, ev: TranscriptEvent) -> None:
+        state.last_speech_at = time.monotonic()   # 무발화 타이머 갱신
         if ev.kind == "source":
             # 입력(설교) 전사는 대표 워커 하나만 송출 (중복 방지)
             if self.primary and state.source_roller is not None:
                 sub = state.source_roller.add_delta(ev.text, ev.is_final)
+                if ev.is_final and state.logger is not None:
+                    state.logger.log("ko", ev.text)
                 self._loop.create_task(
                     hub.broadcast(
                         {"type": "source", "text": sub.text, "final": sub.is_final}
@@ -126,6 +137,8 @@ class LangWorker:
             return
         sub = self._engine.add(ev.text, ev.is_final)
         self.last_text = sub.text
+        if ev.is_final and state.logger is not None:
+            state.logger.log(self.code, ev.text)
         self._loop.create_task(
             hub.broadcast(
                 {
@@ -167,6 +180,10 @@ class AppState:
     # 현재 활성 언어 목록: [{"code","color"}] (순서 = 행 순서)
     languages: list[dict] = field(default_factory=list)
     workers: dict[str, LangWorker] = field(default_factory=dict)
+    # 사용량/무발화 추적 + 전사 로깅
+    started_at: float = 0.0
+    last_speech_at: float = 0.0
+    logger: TranscriptLogger | None = None
 
     def layout(self) -> list[dict]:
         """송출/운영자 화면이 행을 구성하는 데 쓰는 레이아웃 정보."""
@@ -291,6 +308,11 @@ async def pipeline(settings: Settings) -> None:
     state.settings = settings
     state.loop = asyncio.get_running_loop()
     state.source_roller = RollingTranscript()
+    state.started_at = time.monotonic()
+    state.last_speech_at = time.monotonic()
+    state.logger = TranscriptLogger.maybe_create()
+    if state.logger is not None:
+        print(f"[server] 전사 로깅 ON → {state.logger.path}")
 
     async with AudioCapture(settings.audio_input_device) as capture:
         state.capture = capture
@@ -311,15 +333,39 @@ async def pipeline(settings: Settings) -> None:
             [{"code": settings.target_language, "color": DEFAULT_COLORS[0]}]
         )
 
+        heartbeat = asyncio.create_task(_usage_heartbeat())
         try:
             await asyncio.Event().wait()  # 종료될 때까지 대기
         finally:
+            heartbeat.cancel()
             for code in list(state.workers):
                 await state.workers.pop(code).stop()
             close = getattr(state.backend, "aclose", None)
             if close is not None:
                 await close()
             await fanout.stop()
+
+
+async def _usage_heartbeat() -> None:
+    """주기적으로 경과시간·예상비용·무발화 상태를 운영자 화면에 push."""
+    while True:
+        await asyncio.sleep(15)
+        now = time.monotonic()
+        elapsed = now - state.started_at
+        idle = now - state.last_speech_at
+        n_lang = max(1, len(state.languages))
+        online = state.backend is not None and state.backend.name == "gemini"
+        est_cost = (elapsed / 60.0) * n_lang * COST_PER_MIN if online else 0.0
+        await hub.broadcast(
+            {
+                "type": "usage",
+                "elapsed_sec": int(elapsed),
+                "idle_sec": int(idle),
+                "est_cost": round(est_cost, 2),
+                "online": online,
+                "idle_warn": idle >= IDLE_WARN_MIN * 60,
+            }
+        )
 
 
 @asynccontextmanager

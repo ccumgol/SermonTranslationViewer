@@ -28,8 +28,9 @@ source .venv/bin/activate
 echo "🎤 설교 실시간 자막 서버 시작…"
 echo "   송출 화면:   http://localhost:8000/"
 echo "   운영자 화면: http://localhost:8000/operator"
+echo "   셀폰 자막:   http://(이PC의IP):8000/m"
 echo "   (종료: Ctrl+C)"
 echo
 
-# 서버 실행 (python3)
-exec python3 server/ws_server.py
+# 서버 실행 (python3, 패키지 형식)
+exec python3 -m server

@@ -66,6 +66,8 @@
       <button id="backend-badge" title="클릭하면 온라인↔오프라인 전환" style="font-weight:600; padding:5px 12px; border-radius:6px; background:#2a3550; border:none;">백엔드 확인 중…</button>
       <span id="backend-msg" class="muted"></span>
       <span class="muted">|</span>
+      <span id="usage-badge" style="font-weight:600; padding:4px 10px; border-radius:6px; background:#222733;">⏱ —</span>
+      <span class="muted">|</span>
       <span class="muted">송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용</span>
     </div>
 
@@ -181,6 +183,23 @@
       }
     }
 
+    function fmtDuration(sec) {
+      const m = Math.floor(sec / 60), s = sec % 60;
+      return `${m}:${String(s).padStart(2, "0")}`;
+    }
+    function applyUsage(msg) {
+      const el = document.getElementById("usage-badge");
+      let t = `⏱ ${fmtDuration(msg.elapsed_sec)}`;
+      if (msg.online) t += ` · ~$${msg.est_cost}`;
+      if (msg.idle_warn) {
+        t += ` · ⚠ ${Math.floor(msg.idle_sec / 60)}분 무발화`;
+        el.style.background = "#5a2327";
+      } else {
+        el.style.background = "#222733";
+      }
+      el.textContent = t;
+    }
+
     document.getElementById("backend-badge").onclick = () => {
       if (!currentBackend) return;
       const next = currentBackend === "local" ? "gemini" : "local";
@@ -285,6 +304,12 @@
         }
       });
       if (languages.length === 0) return;  // 최소 1개
+      // 온라인은 언어 수만큼 과금 → 3개 선택 시 확인
+      if (languages.length >= 3 && currentBackend === "gemini") {
+        if (!confirm("온라인에서 언어 3개는 비용이 약 3배입니다. 진행할까요?")) {
+          return;
+        }
+      }
       languageMsg.textContent = "언어 적용 중… (세션 재시작)";
       send({ cmd: "set_languages", languages });
     }
@@ -375,6 +400,9 @@
           case "auth_error":
             document.getElementById("backend-msg").textContent =
               "⚠ " + msg.message + " 주소에 ?token=… 을 붙여 여세요.";
+            break;
+          case "usage":
+            applyUsage(msg);
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);
