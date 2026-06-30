@@ -51,6 +51,8 @@ class Settings:
     audio_input_device: str | int | None
     # 번역 백엔드: "gemini"(온라인) 또는 "local"(오프라인). 운영자 화면에서 전환 가능.
     backend: str
+    # 운영자 명령 보호용 토큰(선택). 설정 시 /operator 명령에 토큰 필요.
+    operator_token: str
 
     @staticmethod
     def load() -> "Settings":
@@ -68,6 +70,7 @@ class Settings:
             ws_port=int(os.getenv("WS_PORT", "8000")),
             audio_input_device=_parse_device(os.getenv("AUDIO_INPUT_DEVICE", "")),
             backend=backend,
+            operator_token=os.getenv("OPERATOR_TOKEN", "").strip(),
         )
 
 

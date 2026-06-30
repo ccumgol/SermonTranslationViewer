@@ -47,11 +47,27 @@ class AudioCapture:
         pcm_bytes = bytes(indata)
         if self._loop is None:
             return
+        # 콜백은 PortAudio 스레드에서 실행되므로, 실제 큐 적재는 이벤트 루프
+        # 스레드 안에서 수행해야 QueueFull 을 안전하게 처리할 수 있다.
+        # (call_soon_threadsafe 는 예약만 하고 반환 → 여기서 except 로는 못 잡는다)
+        self._loop.call_soon_threadsafe(self._enqueue, pcm_bytes)
+
+    def _enqueue(self, pcm_bytes: bytes) -> None:
+        """이벤트 루프 스레드에서 실행 — 큐가 차면 가장 오래된 청크를 버린다.
+
+        오디오는 최신이 더 중요하므로 drop-oldest 로 처리한다(최신을 버리면
+        자막에 더 큰 공백이 생긴다)."""
         try:
-            self._loop.call_soon_threadsafe(self._queue.put_nowait, pcm_bytes)
+            self._queue.put_nowait(pcm_bytes)
         except asyncio.QueueFull:
-            # 소비가 못 따라오면 가장 오래된 것을 버리기보다 최신 누락 경고만.
-            print("[audio] 큐가 가득 참 — 청크 드롭", file=sys.stderr)
+            try:
+                self._queue.get_nowait()       # 가장 오래된 것 제거
+            except asyncio.QueueEmpty:
+                pass
+            try:
+                self._queue.put_nowait(pcm_bytes)
+            except asyncio.QueueFull:
+                pass
 
     def _open_stream(self, device: str | int | None) -> None:
         stream = sd.InputStream(

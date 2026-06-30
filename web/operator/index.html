@@ -151,8 +151,11 @@
     let maxLanguages = 3;
     const targetEls = {};      // code -> 번역 표시 엘리먼트
 
+    // 운영자 토큰(서버에서 OPERATOR_TOKEN 설정 시 필요). URL ?token=... 로 전달.
+    const OPERATOR_TOKEN = new URLSearchParams(location.search).get("token") || "";
     function send(obj) {
       if (socket && socket.readyState === WebSocket.OPEN) {
+        if (OPERATOR_TOKEN) obj.token = OPERATOR_TOKEN;
         socket.send(JSON.stringify(obj));
       }
     }
@@ -368,6 +371,10 @@
             break;
           case "backend_error":
             document.getElementById("backend-msg").textContent = "⚠ " + msg.message;
+            break;
+          case "auth_error":
+            document.getElementById("backend-msg").textContent =
+              "⚠ " + msg.message + " 주소에 ?token=… 을 붙여 여세요.";
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);
