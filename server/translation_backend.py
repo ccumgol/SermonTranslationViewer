@@ -29,6 +29,8 @@ class TranslationSession(Protocol):
     @property
     def target_language(self) -> str: ...
 
+    # 참고: ws_server 는 언어 변경 시 워커를 재생성하므로 이 메서드를 직접
+    # 호출하지 않는다. 인터페이스 호환을 위해 남겨둔 예약 메서드.
     def set_target_language(self, code: str) -> None: ...
 
     def stop(self) -> None: ...
@@ -53,10 +55,24 @@ class GeminiBackend:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        # 용어집이 있으면 고유명사 표기를 시스템 지시로 전달(약하게 따를 수 있음)
+        from glossary import Glossary
+
+        g = Glossary.load()
+        if g.terms:
+            pairs = ", ".join(f"{ko}={hint}" for ko, hint in g.terms)
+            self._system_instruction = (
+                "When translating, render these proper nouns/terms as given: "
+                + pairs
+            )
+        else:
+            self._system_instruction = None
 
     def make_session(self, target_language: str) -> TranslationSession:
         return LiveTranslateSession(
-            self._settings, target_language=target_language
+            self._settings,
+            target_language=target_language,
+            system_instruction=self._system_instruction,
         )
 
     async def aclose(self) -> None:

@@ -44,13 +44,20 @@ AudioSource = Callable[[], AsyncIterator[bytes]]
 class LiveTranslateSession:
     """15분 한계를 넘어 끊김 없이 동작하는 실시간 번역 세션 래퍼."""
 
-    def __init__(self, settings: Settings, target_language: str | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        target_language: str | None = None,
+        system_instruction: str | None = None,
+    ) -> None:
         self._settings = settings
         self._client = genai.Client(api_key=settings.gemini_api_key)
         self._resumption_handle: str | None = None
         self._running = False
         # 런타임에 바꿀 수 있는 목표 언어 (초기값은 인자 또는 .env)
         self._target_language = target_language or settings.target_language
+        # 용어집 등 번역 지시(고유명사 표기). 약하게 따를 수 있음.
+        self._system_instruction = system_instruction or None
         self._restart_event = asyncio.Event()
 
     @property
@@ -79,6 +86,8 @@ class LiveTranslateSession:
             translation_config=types.TranslationConfig(
                 target_language_code=self._target_language
             ),
+            # 용어집 기반 고유명사 지시(있으면)
+            system_instruction=self._system_instruction,
             # 15분 제한 우회: 항상 세션 재개 활성화.
             session_resumption=types.SessionResumptionConfig(
                 handle=self._resumption_handle
