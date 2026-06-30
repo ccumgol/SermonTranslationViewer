@@ -104,7 +104,6 @@ class LangWorker:
         loop: asyncio.AbstractEventLoop,
     ) -> None:
         self.code = code
-        self.primary = False           # 한국어(입력) 전사를 대표로 송출할지
         self.last_text = ""
         self._loop = loop
         self._fanout = fanout
@@ -122,10 +121,17 @@ class LangWorker:
         )
 
     def _on_event(self, ev: TranscriptEvent) -> None:
+        # 현재 활성 언어가 아니면(정리 중/유령 워커) 송출하지 않는다.
+        # primary 는 "현재 언어 목록의 첫 번째"로 매번 판정해 stale 상태를 배제.
+        active_codes = [item["code"] for item in state.languages]
+        if self.code not in active_codes:
+            return
+        is_primary = bool(active_codes) and self.code == active_codes[0]
+
         state.last_speech_at = time.monotonic()   # 무발화 타이머 갱신
         if ev.kind == "source":
             # 입력(설교) 전사는 대표 워커 하나만 송출 (중복 방지)
-            if self.primary and state.source_roller is not None:
+            if is_primary and state.source_roller is not None:
                 sub = state.source_roller.add_delta(ev.text, ev.is_final)
                 if ev.is_final and state.logger is not None:
                     state.logger.log("ko", ev.text)
@@ -184,6 +190,8 @@ class AppState:
     started_at: float = 0.0
     last_speech_at: float = 0.0
     logger: TranscriptLogger | None = None
+    # 워커 재구성(언어/백엔드/장치) 동시 실행 방지 — 유령 워커 발생 차단
+    reconfig_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def layout(self) -> list[dict]:
         """송출/운영자 화면이 행을 구성하는 데 쓰는 레이아웃 정보."""
@@ -284,6 +292,9 @@ async def apply_languages(languages: list[dict]) -> None:
         if code not in codes:
             await state.workers.pop(code).stop()
 
+    # 활성 언어 목록을 먼저 갱신(워커 시작 전에) → on_event 가 새 목록 기준 판정
+    state.languages = languages
+
     # 새 워커 시작
     for item in languages:
         code = item["code"]
@@ -294,11 +305,6 @@ async def apply_languages(languages: list[dict]) -> None:
             state.workers[code] = worker
             worker.start()
 
-    # 첫 번째 언어를 대표(primary)로 — 한국어 입력 전사 송출 담당
-    for index, item in enumerate(languages):
-        state.workers[item["code"]].primary = index == 0
-
-    state.languages = languages
     if state.source_roller is not None:
         state.source_roller.reset()
 
@@ -436,14 +442,17 @@ async def _handle_command(cmd: dict) -> None:
             state.style = {**state.style, **incoming}
             await hub.broadcast({"type": "style", "style": state.style})
     elif name == "set_languages":
-        languages = _sanitize_languages(cmd.get("languages"))
-        await apply_languages(languages)
-        await hub.broadcast({"type": "reset"})
-        await hub.broadcast({"type": "layout", "layout": state.layout()})
+        async with state.reconfig_lock:   # 재구성 동시 실행 방지
+            languages = _sanitize_languages(cmd.get("languages"))
+            await apply_languages(languages)
+            await hub.broadcast({"type": "reset"})
+            await hub.broadcast({"type": "layout", "layout": state.layout()})
     elif name == "set_backend":
-        await switch_backend(cmd.get("backend", ""))
+        async with state.reconfig_lock:
+            await switch_backend(cmd.get("backend", ""))
     elif name == "set_device":
-        await _switch_device(cmd.get("device"))
+        async with state.reconfig_lock:
+            await _switch_device(cmd.get("device"))
     elif name == "list_devices":
         await hub.broadcast(
             {
