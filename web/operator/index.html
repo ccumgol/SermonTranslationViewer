@@ -95,9 +95,10 @@
     <div class="card full">
       <div class="label">송출 제어</div>
       <div class="controls">
+        <button id="btn-broadcast" class="primary" title="번역 파이프라인 시작/종료 (종료 시 비용·연산 중단)">▶ 방송 시작</button>
         <button id="btn-open-projection" class="primary">🖥 송출 창 열기</button>
         <button id="btn-reset">↺ 화면 리셋</button>
-        <button id="btn-output" class="danger">⏹ 송출 종료</button>
+        <button id="btn-output" class="danger" title="화면 표시만 가림(번역은 계속)">⏹ 송출 가리기</button>
 
         <div class="ctl-group">
           <span class="label">폰트 크기 <span class="val" id="font-val">4vw</span></span>
@@ -134,7 +135,9 @@
     const connText = document.getElementById("conn-text");
     const btnReset = document.getElementById("btn-reset");
     const btnOutput = document.getElementById("btn-output");
+    const btnBroadcast = document.getElementById("btn-broadcast");
     const btnOpenProjection = document.getElementById("btn-open-projection");
+    let broadcasting = true;
     const fontSize = document.getElementById("font-size");
     const fontVal = document.getElementById("font-val");
     const bgColor = document.getElementById("bg-color");
@@ -346,6 +349,23 @@
       if (win) win.focus();
     };
 
+    function refreshBroadcastBtn() {
+      if (broadcasting) {
+        btnBroadcast.textContent = "■ 방송 종료";
+        btnBroadcast.className = "danger";
+      } else {
+        btnBroadcast.textContent = "▶ 방송 시작";
+        btnBroadcast.className = "primary";
+      }
+    }
+    btnBroadcast.onclick = () => {
+      const next = !broadcasting;
+      if (!next && !confirm("방송을 종료하면 번역이 멈춥니다(비용·연산 중단). 종료할까요?")) {
+        return;
+      }
+      send({ cmd: "set_broadcast", active: next });
+    };
+
     // ── 제어 동작 ──
     btnReset.onclick = () => send({ cmd: "reset" });
     btnOutput.onclick = () => {
@@ -377,8 +397,10 @@
         switch (msg.type) {
           case "init":
             outputEnabled = msg.output_enabled;
+            broadcasting = msg.broadcasting !== false;
             applyBackendBadge(msg.backend);
             refreshOutputBtn();
+            refreshBroadcastBtn();
             syncStyleInputs(msg.style);
             populateDevices(msg.devices, msg.current_device);
             allLanguages = msg.languages || [];
@@ -403,6 +425,11 @@
             break;
           case "usage":
             applyUsage(msg);
+            break;
+          case "broadcast_state":
+            broadcasting = msg.active;
+            refreshBroadcastBtn();
+            languageMsg.textContent = broadcasting ? "방송 시작됨." : "방송 종료됨.";
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);

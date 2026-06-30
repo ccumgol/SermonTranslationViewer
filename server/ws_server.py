@@ -177,6 +177,7 @@ class AppState:
 
     style: dict = field(default_factory=lambda: dict(DEFAULT_STYLE))
     output_enabled: bool = True
+    broadcasting: bool = True   # 번역 파이프라인 가동 여부(방송 시작/종료)
     source_roller: RollingTranscript | None = None
     capture: AudioCapture | None = None
     fanout: AudioFanout | None = None
@@ -282,6 +283,32 @@ async def switch_backend(name: str) -> None:
     await hub.broadcast({"type": "layout", "layout": state.layout()})
 
 
+async def set_broadcast(active: bool) -> None:
+    """방송(번역 파이프라인) 시작/종료.
+
+    종료 시 모든 워커를 멈춰 온라인 비용·연산을 실제로 중단한다(언어 구성은 유지).
+    시작 시 마지막 언어 구성으로 워커를 다시 띄운다.
+    """
+    if active == state.broadcasting and state.workers:
+        return
+    if active:
+        state.broadcasting = True
+        langs = state.languages or [
+            {"code": state.settings.target_language, "color": DEFAULT_COLORS[0]}
+        ]
+        await apply_languages(langs)
+        print("[server] ▶ 방송 시작")
+    else:
+        state.broadcasting = False
+        for code in list(state.workers):
+            await state.workers.pop(code).stop()
+        if state.source_roller is not None:
+            state.source_roller.reset()
+        print("[server] ■ 방송 종료 (워커 정지)")
+    await hub.broadcast({"type": "reset"})
+    await hub.broadcast({"type": "broadcast_state", "active": state.broadcasting})
+
+
 async def apply_languages(languages: list[dict]) -> None:
     """활성 언어 목록을 적용 — 필요한 워커를 시작/중지하고 레이아웃 갱신."""
     assert state.backend is not None and state.fanout is not None
@@ -294,6 +321,10 @@ async def apply_languages(languages: list[dict]) -> None:
 
     # 활성 언어 목록을 먼저 갱신(워커 시작 전에) → on_event 가 새 목록 기준 판정
     state.languages = languages
+
+    # 방송 종료 상태면 워커를 띄우지 않고 구성만 저장
+    if not state.broadcasting:
+        return
 
     # 새 워커 시작
     for item in languages:
@@ -334,10 +365,15 @@ async def pipeline(settings: Settings) -> None:
             state.backend = GeminiBackend(settings)
             print("[server] 백엔드: gemini (온라인)")
 
-        # 초기 언어 = .env 의 TARGET_LANGUAGE 1개
+        # 부팅 시 자동 방송 시작 여부 (AUTO_START=0 이면 방송 종료 상태로 시작)
+        auto = os.getenv("AUTO_START", "1").strip().lower() not in ("0", "false", "no")
+        state.broadcasting = auto
+        # 초기 언어 = .env 의 TARGET_LANGUAGE 1개 (워커는 broadcasting 일 때만 기동)
         await apply_languages(
             [{"code": settings.target_language, "color": DEFAULT_COLORS[0]}]
         )
+        if not auto:
+            print("[server] 방송 종료 상태로 시작 (AUTO_START=0) — 운영자 화면에서 시작")
 
         heartbeat = asyncio.create_task(_usage_heartbeat())
         try:
@@ -447,6 +483,9 @@ async def _handle_command(cmd: dict) -> None:
             await apply_languages(languages)
             await hub.broadcast({"type": "reset"})
             await hub.broadcast({"type": "layout", "layout": state.layout()})
+    elif name == "set_broadcast":
+        async with state.reconfig_lock:
+            await set_broadcast(bool(cmd.get("active", True)))
     elif name == "set_backend":
         async with state.reconfig_lock:
             await switch_backend(cmd.get("backend", ""))
@@ -490,6 +529,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 "type": "init",
                 "style": state.style,
                 "output_enabled": state.output_enabled,
+                "broadcasting": state.broadcasting,
                 "backend": state.backend.name if state.backend else "unknown",
                 "languages": LANGUAGES,          # 선택 가능한 전체 언어
                 "layout": state.layout(),        # 현재 활성 언어(행) 구성
