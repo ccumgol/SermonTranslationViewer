@@ -9,6 +9,7 @@ data/sermons/*
 data/logs/*
 data/glossary/*
 !data/**/.gitkeep
+!data/glossary/*.example.txt
 *.db
 *.sqlite
 *.sqlite3

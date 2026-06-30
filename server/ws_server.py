@@ -32,6 +32,7 @@ from fastapi.responses import FileResponse
 
 from audio_input import AudioCapture, AudioFanout, input_devices, queue_chunks
 from config import Settings
+from languages import LANGUAGES, VALID_CODES
 from live_session import TranscriptEvent
 from local_backend import LocalBackend
 from subtitle_engine import RollingTranscript, SubtitleEngine
@@ -46,19 +47,8 @@ DEFAULT_STYLE: dict = {
     "padding": 4.0,        # 화면 테두리에서의 안여백 (vw)
 }
 
-# 운영자 화면에 노출할 목표 언어 목록 (실제 API 로 검증된 코드)
-LANGUAGES: list[dict] = [
-    {"code": "en", "label": "English 영어"},
-    {"code": "ja", "label": "日本語 일본어"},
-    {"code": "zh-CN", "label": "中文 중국어"},
-    {"code": "es", "label": "Español 스페인어"},
-    {"code": "vi", "label": "Tiếng Việt 베트남어"},
-    {"code": "fr", "label": "Français 프랑스어"},
-    {"code": "ru", "label": "Русский 러시아어"},
-    {"code": "ko", "label": "한국어"},
-]
+# 언어 정의는 languages.py 단일 출처 사용
 LABELS: dict[str, str] = {item["code"]: item["label"] for item in LANGUAGES}
-VALID_CODES = set(LABELS)
 
 # 언어 슬롯별 기본 글자색 (1번/2번/3번)
 DEFAULT_COLORS = ["#ffffff", "#ffd54a", "#5ad1ff"]
@@ -335,6 +325,12 @@ async def pipeline(settings: Settings) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = Settings.load()
+    if settings.ws_host == "0.0.0.0" and not settings.operator_token:
+        print(
+            "[server] ⚠ 경고: 모든 네트워크에 열려 있고(WS_HOST=0.0.0.0) 운영자 "
+            "토큰이 없습니다. 같은 LAN 의 누구나 /operator 로 설정을 바꿀 수 있습니다. "
+            "OPERATOR_TOKEN 설정을 권장합니다."
+        )
     task = asyncio.create_task(pipeline(settings))
     print(f"[server] 파이프라인 시작 — 모델: {settings.model}")
     try:
@@ -358,6 +354,25 @@ async def overlay() -> FileResponse:
 @app.get("/operator")
 async def operator() -> FileResponse:
     return FileResponse(WEB_DIR / "operator" / "index.html")
+
+
+@app.get("/m")
+async def mobile() -> FileResponse:
+    """교인용 모바일 자막 — 폰에서 언어를 골라 그 언어만 본다(읽기 전용)."""
+    return FileResponse(WEB_DIR / "mobile" / "index.html")
+
+
+@app.get("/health")
+async def health() -> dict:
+    """모니터링용 상태 엔드포인트."""
+    return {
+        "status": "ok",
+        "backend": state.backend.name if state.backend else None,
+        "languages": [item["code"] for item in state.languages],
+        "output_enabled": state.output_enabled,
+        "audio_device": state.capture.current_device if state.capture else None,
+        "clients": len(hub._clients),
+    }
 
 
 async def _handle_command(cmd: dict) -> None:
@@ -441,6 +456,15 @@ async def ws_endpoint(ws: WebSocket) -> None:
             except json.JSONDecodeError:
                 continue
             if isinstance(cmd, dict) and "cmd" in cmd:
+                token = state.settings.operator_token if state.settings else ""
+                if token and cmd.get("token") != token:
+                    await ws.send_text(
+                        json.dumps(
+                            {"type": "auth_error", "message": "운영자 토큰이 필요합니다."},
+                            ensure_ascii=False,
+                        )
+                    )
+                    continue
                 await _handle_command(cmd)
     except WebSocketDisconnect:
         pass

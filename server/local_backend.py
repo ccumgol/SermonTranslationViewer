@@ -5,8 +5,9 @@
 구조라 더 효율적이다.
 
 품질·속도 개선 포인트:
-  - STT 는 문장 단위로 모아 번역에 넘긴다(단어 조각마다 번역하면 느리고 어색).
-  - STT 에 도메인 컨텍스트(성경 고유명사 등)를 주어 인식률을 높인다.
+  - STT 는 VAD(침묵)로 발화 구간을 끊어 그 구간 전체를 전사(스트리밍보다 정확).
+  - 용어집(glossary)으로 STT 전사 후처리 치환 + 번역 고유명사 힌트를 적용.
+  - 직전 문장을 번역 문맥으로 전달해 대명사/흐름 연속성 개선.
   - STT/MT 모델은 환경변수로 교체 가능 (정확도↔속도 튜닝).
 """
 
@@ -42,15 +43,12 @@ MIN_SILENCE_SEC = float(os.getenv("STT_MIN_SILENCE_SEC", "0.7"))
 # 너무 짧은 잡음은 무시(실제 발화 최소 길이).
 MIN_SPEECH_SEC = 0.3
 # 쉼 없이 길게 말하면 이 길이에서 강제로 끊어 전사(지연 상한).
-MAX_SEGMENT_SEC = 12.0
+MAX_SEGMENT_SEC = float(os.getenv("STT_MAX_SEGMENT_SEC", "12.0"))
 _CHUNK_SEC = 0.1  # fanout 청크 = 100ms
 
-# 번역 프롬프트에 쓸 언어 이름 (code → 영어 표기)
-LANGUAGE_NAMES = {
-    "en": "English", "ja": "Japanese", "zh-CN": "Chinese (Simplified)",
-    "zh": "Chinese", "es": "Spanish", "vi": "Vietnamese",
-    "fr": "French", "ru": "Russian", "ko": "Korean",
-}
+# 번역 프롬프트에 쓸 언어 이름은 languages.py 단일 출처 사용
+from glossary import Glossary  # noqa: E402
+from languages import LANGUAGE_NAMES  # noqa: E402
 
 
 class KoreanSTT:
@@ -61,9 +59,15 @@ class KoreanSTT:
       - ("sentence", 문장): 번역에 넘길 완성 문장 (정확도·속도)
     """
 
-    def __init__(self, fanout: AudioFanout, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(
+        self,
+        fanout: AudioFanout,
+        loop: asyncio.AbstractEventLoop,
+        glossary: Glossary | None = None,
+    ) -> None:
         self._fanout = fanout
         self._loop = loop
+        self._glossary = glossary or Glossary()
         self._subscribers: set = set()
         self._task: asyncio.Task | None = None
         # STT 블로킹 추론은 전용 스레드풀에서 (종료 시 기본 풀과의 race 방지)
@@ -129,6 +133,7 @@ class KoreanSTT:
                 print(f"[local] 전사 실패: {exc}")
                 return
             text = (getattr(result, "text", "") or "").strip()
+            text = self._glossary.correct(text)     # 용어집 후처리 치환
             if text:
                 self._publish("delta", text + " ")  # 한국어 화면 표시
                 self._publish("sentence", text)     # 번역 대상
@@ -161,13 +166,26 @@ class KoreanSTT:
             self._fanout.unsubscribe(queue)
 
 
-async def translate(text: str, target_code: str) -> str:
-    """TranslateGemma 로 한국어 → 목표 언어 번역."""
+async def translate(
+    text: str,
+    target_code: str,
+    *,
+    prev_korean: str = "",
+    term_hint: str = "",
+) -> str:
+    """TranslateGemma 로 한국어 → 목표 언어 번역.
+
+    prev_korean: 직전 문장(문맥 연속성용, 번역하지 않음)
+    term_hint  : 고유명사 권장 표기 힌트("아브람→Abram, ...")
+    """
     target_name = LANGUAGE_NAMES.get(target_code, target_code)
-    prompt = (
-        f"Translate the following Korean text to {target_name}. "
-        f"Output only the translation, no explanations.\n\n{text}"
-    )
+    lines = [f"Translate the following Korean text to {target_name}."]
+    if term_hint:
+        lines.append(f"Use these names/terms: {term_hint}.")
+    if prev_korean:
+        lines.append(f"(Previous sentence for context, do NOT translate: {prev_korean})")
+    lines.append("Output only the translation, no explanations.")
+    prompt = "\n".join(lines) + f"\n\n{text}"
     payload = {
         "model": MT_MODEL,
         "prompt": prompt,
@@ -188,11 +206,13 @@ class LocalSession:
     audio_source 는 사용하지 않는다(오디오는 공유 STT가 소비).
     """
 
-    def __init__(self, stt: KoreanSTT, code: str) -> None:
+    def __init__(self, stt: KoreanSTT, code: str, glossary: Glossary | None = None) -> None:
         self._stt = stt
         self._code = code
+        self._glossary = glossary or Glossary()
         self._running = False
         self._on_event = None
+        self._prev_korean = ""   # 직전 문장(번역 문맥용)
         self._tx_queue: asyncio.Queue[str] = asyncio.Queue()
         self._tx_task: asyncio.Task | None = None
 
@@ -223,10 +243,16 @@ class LocalSession:
         while self._running:
             sentence = await self._tx_queue.get()
             try:
-                translated = await translate(sentence, self._code)
+                translated = await translate(
+                    sentence,
+                    self._code,
+                    prev_korean=self._prev_korean,
+                    term_hint=self._glossary.hint_for(sentence),
+                )
             except Exception as exc:  # noqa: BLE001
                 print(f"[local] 번역 실패({self._code}): {exc}")
                 continue
+            self._prev_korean = sentence  # 다음 문장의 문맥으로
             if translated and self._on_event is not None:
                 self._on_event(TranscriptEvent("target", translated + " ", True))
 
@@ -250,7 +276,13 @@ class LocalBackend:
     def __init__(
         self, fanout: AudioFanout, loop: asyncio.AbstractEventLoop
     ) -> None:
-        self._stt = KoreanSTT(fanout, loop)
+        self._glossary = Glossary.load()  # data/glossary/glossary.txt (있으면)
+        if not self._glossary.is_empty:
+            print(
+                f"[local] 용어집 로드: 치환 {len(self._glossary.corrections)}개 / "
+                f"용어 {len(self._glossary.terms)}개"
+            )
+        self._stt = KoreanSTT(fanout, loop, glossary=self._glossary)
         # 번역 모델을 미리 메모리에 올려둔다(첫 문장 콜드 로딩 지연 방지)
         self._warmup_task = loop.create_task(self._warmup())
 
@@ -264,7 +296,7 @@ class LocalBackend:
             print(f"[local] 번역 모델 예열 실패(무시): {exc}")
 
     def make_session(self, target_language: str) -> LocalSession:
-        return LocalSession(self._stt, target_language)
+        return LocalSession(self._stt, target_language, glossary=self._glossary)
 
     async def aclose(self) -> None:
         """서버 종료 시 정리 — STT 태스크/스레드풀, 예열 태스크 정돈."""

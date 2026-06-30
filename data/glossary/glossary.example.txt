@@ -1,0 +1,18 @@
+# 용어집 예시 — 이 파일을 glossary.txt 로 복사해 교회에 맞게 채우세요.
+#   cp data/glossary/glossary.example.txt data/glossary/glossary.txt
+# glossary.txt 는 git 에 올라가지 않습니다(개인/교회 자료).
+#
+# 형식:
+#   fix:  자주틀리는전사  => 올바른표기      (STT 전사 후 자동 치환)
+#   term: 한국어  = 목표어 권장 표기          (번역 시 고유명사 힌트)
+
+# ── STT 전사 교정 (자주 틀리는 것만) ──
+fix: 아브라마 => 아브람
+fix: 카라사대 => 가라사대
+
+# ── 번역 고유명사 힌트 ──
+term: 아브람 = Abram
+term: 여호와 = Jehovah / the LORD
+term: 다메섹 = Damascus
+term: 엘리에셀 = Eliezer
+term: 고린도전서 = 1 Corinthians

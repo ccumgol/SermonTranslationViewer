@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+  <title>실시간 자막 / Live Subtitle</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: #000; color: #fff;
+      font-family: -apple-system, "Noto Sans KR", sans-serif;
+    }
+    #bar {
+      position: fixed; top: 0; left: 0; right: 0;
+      display: flex; gap: 8px; align-items: center;
+      padding: 10px 12px; background: #111; border-bottom: 1px solid #222;
+    }
+    #bar select {
+      flex: 1; font-size: 16px; padding: 8px 10px; border-radius: 8px;
+      background: #1c1f27; color: #fff; border: 1px solid #333;
+    }
+    #status { font-size: 12px; color: #7d8597; white-space: nowrap; }
+    /* 자막: 하단부터 위로 채움, 큰 글씨, 폰에서 읽기 좋게 */
+    #wrap {
+      position: fixed; left: 0; right: 0; top: 56px; bottom: 0;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      padding: 16px; overflow: hidden;
+    }
+    #text {
+      font-size: 7vw; font-weight: 700; line-height: 1.4;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    @media (min-width: 600px) { #text { font-size: 38px; } }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <select id="lang"></select>
+    <span id="status">연결 중…</span>
+  </div>
+  <div id="wrap"><div id="text"> </div></div>
+
+  <script>
+    const langSel = document.getElementById("lang");
+    const statusEl = document.getElementById("status");
+    const textEl = document.getElementById("text");
+    let chosen = null;          // 현재 보고 있는 언어 코드
+    let layout = [];
+
+    function rebuildOptions() {
+      const prev = chosen;
+      langSel.innerHTML = "";
+      layout.forEach((it) => {
+        const o = document.createElement("option");
+        o.value = it.code; o.textContent = it.label || it.code;
+        langSel.appendChild(o);
+      });
+      // 이전 선택 유지, 없으면 첫 언어
+      if (prev && layout.some((it) => it.code === prev)) {
+        chosen = prev;
+      } else if (layout.length) {
+        chosen = layout[0].code;
+      }
+      if (chosen) langSel.value = chosen;
+      // 현재 선택 언어의 마지막 자막 표시
+      const cur = layout.find((it) => it.code === chosen);
+      textEl.textContent = (cur && cur.text) ? cur.text : " ";
+    }
+
+    langSel.onchange = () => {
+      chosen = langSel.value;
+      const cur = layout.find((it) => it.code === chosen);
+      textEl.textContent = (cur && cur.text) ? cur.text : " ";
+    };
+
+    function connect() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onopen = () => { statusEl.textContent = "● 실시간"; };
+      ws.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        if (m.type === "init" || m.type === "layout") {
+          layout = m.layout || [];
+          rebuildOptions();
+        } else if (m.type === "subtitle") {
+          if (m.lang === chosen) textEl.textContent = m.text || " ";
+        } else if (m.type === "reset") {
+          textEl.textContent = " ";
+        }
+      };
+      ws.onclose = () => { statusEl.textContent = "재연결 중…"; setTimeout(connect, 1500); };
+      ws.onerror = () => ws.close();
+    }
+    connect();
+  </script>
+</body>
+</html>
