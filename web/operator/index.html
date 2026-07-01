@@ -57,85 +57,107 @@
   </style>
 </head>
 <body>
-  <h1>설교 실시간 번역 — 운영자 대시보드</h1>
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h1 data-i18n="title">설교 실시간 번역 — 운영자 대시보드</h1>
+    <button id="lang-toggle" style="padding:6px 12px; border-radius:8px; border:1px solid #3a4150; background:#232936; color:#e6e8ec; font-weight:600;">EN</button>
+  </div>
   <div class="grid">
     <div class="card full status">
       <span class="dot" id="conn-dot"></span>
       <span id="conn-text">연결 끊김</span>
       <span class="muted">|</span>
-      <button id="backend-badge" title="클릭하면 온라인↔오프라인 전환" style="font-weight:600; padding:5px 12px; border-radius:6px; background:#2a3550; border:none;">백엔드 확인 중…</button>
+      <button id="backend-badge" style="font-weight:600; padding:5px 12px; border-radius:6px; background:#2a3550; border:none;">…</button>
       <span id="backend-msg" class="muted"></span>
       <span class="muted">|</span>
       <span id="usage-badge" style="font-weight:600; padding:4px 10px; border-radius:6px; background:#222733;">⏱ —</span>
       <span class="muted">|</span>
-      <span class="muted">송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용</span>
+      <span class="muted" data-i18n="outputHint">송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용</span>
     </div>
 
     <!-- 오디오 소스 선택 -->
     <div class="card full">
-      <div class="label">오디오 입력 소스</div>
+      <div class="label" data-i18n="audioSource">오디오 입력 소스</div>
       <div class="row">
         <div class="ctl-group" style="flex:1; min-width:260px;">
-          <span class="label">현재 입력 장치</span>
+          <span class="label" data-i18n="currentDevice">현재 입력 장치</span>
           <select id="device-select"></select>
         </div>
-        <button id="btn-refresh-devices">🔄 목록 새로고침</button>
+        <button id="btn-refresh-devices" data-i18n="refreshList">🔄 목록 새로고침</button>
         <span id="device-msg"></span>
       </div>
     </div>
 
     <!-- 번역 언어 선택 (최대 3개, 행별 색상) -->
     <div class="card full">
-      <div class="label">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
+      <div class="label" data-i18n="langCardHint">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
       <div class="row" id="lang-slots"></div>
       <div class="muted" id="language-msg" style="margin-top:8px;"></div>
     </div>
 
     <!-- 설교 원고 (전사 교정용) -->
     <div class="card full">
-      <div class="label">설교 원고 — 붙여넣으면 고유명사를 뽑아 전사를 자동 교정 (예: 티브리어→히브리어)</div>
-      <textarea id="script-text" rows="4" placeholder="설교 원고를 여기에 붙여넣으세요. 성경 고유명사·인명·지명이 정확히 인식되도록 도와줍니다."
+      <div class="label" data-i18n="scriptCardHint">설교 원고 — 붙여넣으면 고유명사를 뽑아 전사를 자동 교정 (예: 티브리어→히브리어)</div>
+      <textarea id="script-text" rows="4" data-i18n-ph="scriptPlaceholder"
         style="width:100%; box-sizing:border-box; background:#1c1f27; color:#e6e8ec; border:1px solid #333; border-radius:8px; padding:10px; font-size:14px; resize:vertical;"></textarea>
       <div class="row" style="margin-top:8px; align-items:center;">
-        <button id="btn-script" class="primary">원고 적용</button>
-        <button id="btn-script-clear">지우기</button>
+        <button id="btn-script" class="primary" data-i18n="applyScript">원고 적용</button>
+        <button id="btn-script-clear" data-i18n="clear">지우기</button>
         <span id="script-msg" class="muted"></span>
       </div>
     </div>
 
     <!-- 제어 패널 -->
     <div class="card full">
-      <div class="label">송출 제어</div>
+      <div class="label" data-i18n="outputControl">송출 제어</div>
       <div class="controls">
-        <button id="btn-broadcast" class="primary" title="번역 파이프라인 시작/종료 (종료 시 비용·연산 중단)">▶ 방송 시작</button>
-        <button id="btn-open-projection" class="primary">🖥 송출 창 열기</button>
-        <button id="btn-reset">↺ 화면 리셋</button>
-        <button id="btn-output" class="danger" title="화면 표시만 가림(번역은 계속)">⏹ 송출 가리기</button>
+        <button id="btn-broadcast" class="primary">▶ 방송 시작</button>
+        <button id="btn-open-projection" class="primary" data-i18n="openProjection">🖥 송출 창 열기</button>
+        <button id="btn-reset" data-i18n="resetScreen">↺ 화면 리셋</button>
+        <button id="btn-output" class="danger">⏹ 송출 가리기</button>
 
         <div class="ctl-group">
-          <span class="label">폰트 크기 <span class="val" id="font-val">4vw</span></span>
+          <span class="label"><span data-i18n="fontSize">폰트 크기</span> <span class="val" id="font-val">4vw</span></span>
           <input type="range" id="font-size" min="2" max="7" step="0.1" value="4" />
         </div>
 
         <div class="ctl-group">
-          <span class="label">배경색</span>
+          <span class="label" data-i18n="bgColor">배경색</span>
           <input type="color" id="bg-color" value="#000000" />
         </div>
 
         <div class="ctl-group">
-          <span class="label">안여백(테두리 간격) <span class="val" id="pad-val">4vw</span></span>
+          <span class="label"><span data-i18n="padding">안여백(테두리 간격)</span> <span class="val" id="pad-val">4vw</span></span>
           <input type="range" id="padding" min="0" max="12" step="0.5" value="4" />
+        </div>
+
+        <div class="ctl-group">
+          <span class="label" data-i18n="subtitleRegion">자막 영역</span>
+          <select id="region" style="min-width:130px;">
+            <option value="full" data-i18n="regionFull">전체 화면</option>
+            <option value="bottom" data-i18n="regionBottom">하단 밴드</option>
+            <option value="top" data-i18n="regionTop">상단 밴드</option>
+          </select>
+        </div>
+
+        <div class="ctl-group">
+          <span class="label" data-i18n="maxLines">최대 줄 수</span>
+          <select id="max-lines" style="min-width:120px;">
+            <option value="0" data-i18n="noLimit">제한 없음</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="label">한국어 인식 (입력 전사)</div>
+      <div class="label" data-i18n="sourceLabel">한국어 인식 (입력 전사)</div>
       <div class="source" id="source">—</div>
     </div>
 
     <div class="card">
-      <div class="label">번역 (송출 자막)</div>
+      <div class="label" data-i18n="targetLabel">번역 (송출 자막)</div>
       <div id="target-list"></div>
     </div>
   </div>
@@ -154,6 +176,8 @@
     const fontVal = document.getElementById("font-val");
     const bgColor = document.getElementById("bg-color");
     const padding = document.getElementById("padding");
+    const regionSel = document.getElementById("region");
+    const maxLinesSel = document.getElementById("max-lines");
     const padVal = document.getElementById("pad-val");
     const deviceSelect = document.getElementById("device-select");
     const btnRefreshDevices = document.getElementById("btn-refresh-devices");
@@ -168,6 +192,92 @@
     let maxLanguages = 3;
     const targetEls = {};      // code -> 번역 표시 엘리먼트
 
+    // ── 다국어(UI) ──────────────────────────────────────────
+    const I18N = {
+      ko: {
+        title: "설교 실시간 번역 — 운영자 대시보드",
+        outputHint: '송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용',
+        audioSource: "오디오 입력 소스", currentDevice: "현재 입력 장치",
+        refreshList: "🔄 목록 새로고침",
+        langCardHint: "번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가",
+        scriptCardHint: "설교 원고 — 붙여넣으면 고유명사를 뽑아 전사를 자동 교정 (예: 티브리어→히브리어)",
+        scriptPlaceholder: "설교 원고를 여기에 붙여넣으세요. 성경 고유명사·인명·지명이 정확히 인식되도록 도와줍니다.",
+        applyScript: "원고 적용", clear: "지우기",
+        outputControl: "송출 제어", openProjection: "🖥 송출 창 열기",
+        resetScreen: "↺ 화면 리셋", fontSize: "폰트 크기", bgColor: "배경색",
+        padding: "안여백(테두리 간격)", subtitleRegion: "자막 영역",
+        regionFull: "전체 화면", regionBottom: "하단 밴드", regionTop: "상단 밴드",
+        maxLines: "최대 줄 수", noLimit: "제한 없음",
+        sourceLabel: "한국어 인식 (입력 전사)", targetLabel: "번역 (송출 자막)",
+        broadcastStart: "▶ 방송 시작", broadcastStop: "■ 방송 종료",
+        outputHide: "⏹ 송출 가리기", outputShow: "▶ 송출 재개",
+        connected: "연결됨", disconnected: "연결 끊김 — 재연결 시도 중",
+        langSlotReq: "1번 언어 (필수)", langSlot2: "2번 언어 (선택)", langSlot3: "3번 언어 (선택)",
+        langNone: "(사용 안 함)",
+        badgeLocal: "🖥 로컬 (오프라인) — 클릭: 온라인 전환",
+        badgeGemini: "☁️ 온라인 (Gemini) — 클릭: 오프라인 전환", badgeUnknown: "백엔드 미상",
+        broadcastConfirm: "방송을 종료하면 번역이 멈춥니다(비용·연산 중단). 종료할까요?",
+        cost3Confirm: "온라인에서 언어 3개는 비용이 약 3배입니다. 진행할까요?",
+        applying: "언어 적용 중… (세션 재시작)", applied: "언어를 적용했습니다.",
+        switchingLocal: "오프라인으로 전환 중… (모델 로딩 ~10초)",
+        switchingGemini: "온라인으로 전환 중…", switched: "전환 완료.",
+        idleSuffix: "분 무발화", scriptApplied: "원고 적용됨 · 교정 용어",
+        scriptSaved: "저장된 원고 · 교정 용어", scriptNone: "원고 없음", scriptApplying: "적용 중…",
+        bcStarted: "방송 시작됨.", bcStopped: "방송 종료됨.",
+        devRefreshed: "목록을 새로고침했습니다.", devSwitched: "입력 장치를 전환했습니다 →", devError: "⚠ 장치 전환 실패:", tokenHint: "주소에 ?token=… 을 붙여 여세요.",
+      },
+      en: {
+        title: "Sermon Live Translation — Operator Dashboard",
+        outputHint: 'Output screen: <code>/</code> · use this URL as an OBS browser source',
+        audioSource: "Audio input source", currentDevice: "Current device",
+        refreshList: "🔄 Refresh list",
+        langCardHint: "Target languages — up to 3 at once (input auto-detected) · cost scales with count",
+        scriptCardHint: "Sermon script — paste it to auto-correct proper nouns in transcription",
+        scriptPlaceholder: "Paste the sermon script here. Helps recognize Bible names, people and places accurately.",
+        applyScript: "Apply script", clear: "Clear",
+        outputControl: "Output control", openProjection: "🖥 Open output window",
+        resetScreen: "↺ Reset screen", fontSize: "Font size", bgColor: "Background",
+        padding: "Padding (edge inset)", subtitleRegion: "Subtitle region",
+        regionFull: "Full screen", regionBottom: "Bottom band", regionTop: "Top band",
+        maxLines: "Max lines", noLimit: "No limit",
+        sourceLabel: "Korean recognition (input)", targetLabel: "Translation (output)",
+        broadcastStart: "▶ Start broadcast", broadcastStop: "■ Stop broadcast",
+        outputHide: "⏹ Hide output", outputShow: "▶ Show output",
+        connected: "Connected", disconnected: "Disconnected — reconnecting",
+        langSlotReq: "Language 1 (required)", langSlot2: "Language 2 (optional)", langSlot3: "Language 3 (optional)",
+        langNone: "(none)",
+        badgeLocal: "🖥 Local (offline) — click: go online",
+        badgeGemini: "☁️ Online (Gemini) — click: go offline", badgeUnknown: "Backend unknown",
+        broadcastConfirm: "Stopping the broadcast halts translation (stops cost/compute). Stop?",
+        cost3Confirm: "3 languages online costs ~3×. Proceed?",
+        applying: "Applying languages… (restarting sessions)", applied: "Languages applied.",
+        switchingLocal: "Switching to offline… (models load ~10s)",
+        switchingGemini: "Switching to online…", switched: "Switched.",
+        idleSuffix: " min idle", scriptApplied: "Script applied · terms",
+        scriptSaved: "Saved script · terms", scriptNone: "No script", scriptApplying: "Applying…",
+        bcStarted: "Broadcast started.", bcStopped: "Broadcast stopped.",
+        devRefreshed: "Device list refreshed.", devSwitched: "Input device switched →", devError: "⚠ Device switch failed:", tokenHint: "add ?token=… to the URL.",
+      },
+    };
+    let lang = localStorage.getItem("op_lang") || "ko";
+    function t(key) { return (I18N[lang] && I18N[lang][key]) || I18N.ko[key] || key; }
+    function applyI18n() {
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        el.innerHTML = t(el.getAttribute("data-i18n"));
+      });
+      document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+        el.placeholder = t(el.getAttribute("data-i18n-ph"));
+      });
+      document.getElementById("lang-toggle").textContent = lang === "ko" ? "EN" : "한글";
+      document.documentElement.lang = lang;
+    }
+    document.getElementById("lang-toggle").onclick = () => {
+      lang = lang === "ko" ? "en" : "ko";
+      localStorage.setItem("op_lang", lang);
+      applyI18n();
+      refreshDynamic();
+    };
+
     // 운영자 토큰(서버에서 OPERATOR_TOKEN 설정 시 필요). URL ?token=... 로 전달.
     const OPERATOR_TOKEN = new URLSearchParams(location.search).get("token") || "";
     function send(obj) {
@@ -177,24 +287,23 @@
       }
     }
 
+    let connected = false;
     function setConnected(on) {
+      connected = on;
       dot.classList.toggle("on", on);
-      connText.textContent = on ? "연결됨" : "연결 끊김 — 재연결 시도 중";
+      connText.textContent = on ? t("connected") : t("disconnected");
     }
 
     let currentBackend = null;
     function applyBackendBadge(backend) {
-      currentBackend = backend;
+      if (backend) currentBackend = backend;
       const badge = document.getElementById("backend-badge");
-      if (backend === "local") {
-        badge.textContent = "🖥 로컬 (오프라인) — 클릭: 온라인 전환";
-        badge.style.background = "#1f5e3a";
-      } else if (backend === "gemini") {
-        badge.textContent = "☁️ 온라인 (Gemini) — 클릭: 오프라인 전환";
-        badge.style.background = "#2a4a6e";
+      if (currentBackend === "local") {
+        badge.textContent = t("badgeLocal"); badge.style.background = "#1f5e3a";
+      } else if (currentBackend === "gemini") {
+        badge.textContent = t("badgeGemini"); badge.style.background = "#2a4a6e";
       } else {
-        badge.textContent = "백엔드 미상";
-        badge.style.background = "#5a2327";
+        badge.textContent = t("badgeUnknown"); badge.style.background = "#5a2327";
       }
     }
 
@@ -204,33 +313,40 @@
     }
     function applyUsage(msg) {
       const el = document.getElementById("usage-badge");
-      let t = `⏱ ${fmtDuration(msg.elapsed_sec)}`;
-      if (msg.online) t += ` · ~$${msg.est_cost}`;
+      let label = `⏱ ${fmtDuration(msg.elapsed_sec)}`;
+      if (msg.online) label += ` · ~$${msg.est_cost}`;
       if (msg.idle_warn) {
-        t += ` · ⚠ ${Math.floor(msg.idle_sec / 60)}분 무발화`;
+        label += ` · ⚠ ${Math.floor(msg.idle_sec / 60)}${t("idleSuffix")}`;
         el.style.background = "#5a2327";
       } else {
         el.style.background = "#222733";
       }
-      el.textContent = t;
+      el.textContent = label;
+    }
+
+    // 언어 전환 시 현재 상태 기반 동적 텍스트 재적용
+    function refreshDynamic() {
+      setConnected(connected);
+      applyBackendBadge(null);
+      refreshBroadcastBtn();
+      refreshOutputBtn();
+      if (lastLayout) buildLangSlots(lastLayout);
     }
 
     document.getElementById("backend-badge").onclick = () => {
       if (!currentBackend) return;
       const next = currentBackend === "local" ? "gemini" : "local";
       const msg = document.getElementById("backend-msg");
-      msg.textContent = next === "local"
-        ? "오프라인으로 전환 중… (모델 로딩 ~10초)"
-        : "온라인으로 전환 중…";
+      msg.textContent = next === "local" ? t("switchingLocal") : t("switchingGemini");
       send({ cmd: "set_backend", backend: next });
     };
 
     function refreshOutputBtn() {
       if (outputEnabled) {
-        btnOutput.textContent = "⏹ 송출 종료";
+        btnOutput.textContent = t("outputHide");
         btnOutput.className = "danger";
       } else {
-        btnOutput.textContent = "▶ 송출 재개";
+        btnOutput.textContent = t("outputShow");
         btnOutput.className = "primary";
       }
     }
@@ -240,6 +356,8 @@
       if (s.fontSize != null) { fontSize.value = s.fontSize; fontVal.textContent = `${s.fontSize}vw`; }
       if (s.bgColor != null) bgColor.value = s.bgColor;
       if (s.padding != null) { padding.value = s.padding; padVal.textContent = `${s.padding}vw`; }
+      if (s.region != null) regionSel.value = s.region;
+      if (s.maxLines != null) maxLinesSel.value = String(s.maxLines);
     }
 
     // ── 오디오 소스 ──
@@ -270,7 +388,7 @@
 
         const labelSpan = document.createElement("span");
         labelSpan.className = "label";
-        labelSpan.textContent = `${i + 1}번 언어` + (i === 0 ? " (필수)" : " (선택)");
+        labelSpan.textContent = t(i === 0 ? "langSlotReq" : (i === 1 ? "langSlot2" : "langSlot3"));
 
         const inner = document.createElement("div");
         inner.className = "slot";
@@ -279,7 +397,7 @@
         sel.dataset.slot = i;
         if (i > 0) {
           const none = document.createElement("option");
-          none.value = ""; none.textContent = "(사용 안 함)";
+          none.value = ""; none.textContent = t("langNone");
           sel.appendChild(none);
         }
         allLanguages.forEach((l) => {
@@ -321,11 +439,11 @@
       if (languages.length === 0) return;  // 최소 1개
       // 온라인은 언어 수만큼 과금 → 3개 선택 시 확인
       if (languages.length >= 3 && currentBackend === "gemini") {
-        if (!confirm("온라인에서 언어 3개는 비용이 약 3배입니다. 진행할까요?")) {
+        if (!confirm(t("cost3Confirm"))) {
           return;
         }
       }
-      languageMsg.textContent = "언어 적용 중… (세션 재시작)";
+      languageMsg.textContent = t("applying");
       send({ cmd: "set_languages", languages });
     }
 
@@ -347,9 +465,11 @@
       });
     }
 
+    let lastLayout = [];
     function applyLayout(layout) {
-      buildLangSlots(layout);
-      buildTargetList(layout);
+      lastLayout = layout || [];
+      buildLangSlots(lastLayout);
+      buildTargetList(lastLayout);
     }
 
     // ── 송출 창 열기 ──
@@ -363,16 +483,16 @@
 
     function refreshBroadcastBtn() {
       if (broadcasting) {
-        btnBroadcast.textContent = "■ 방송 종료";
+        btnBroadcast.textContent = t("broadcastStop");
         btnBroadcast.className = "danger";
       } else {
-        btnBroadcast.textContent = "▶ 방송 시작";
+        btnBroadcast.textContent = t("broadcastStart");
         btnBroadcast.className = "primary";
       }
     }
     btnBroadcast.onclick = () => {
       const next = !broadcasting;
-      if (!next && !confirm("방송을 종료하면 번역이 멈춥니다(비용·연산 중단). 종료할까요?")) {
+      if (!next && !confirm(t("broadcastConfirm"))) {
         return;
       }
       send({ cmd: "set_broadcast", active: next });
@@ -382,7 +502,7 @@
     const scriptText = document.getElementById("script-text");
     const scriptMsg = document.getElementById("script-msg");
     document.getElementById("btn-script").onclick = () => {
-      scriptMsg.textContent = "적용 중…";
+      scriptMsg.textContent = t("scriptApplying");
       send({ cmd: "set_script", text: scriptText.value });
     };
     document.getElementById("btn-script-clear").onclick = () => {
@@ -405,12 +525,16 @@
           fontSize: parseFloat(fontSize.value),
           bgColor: bgColor.value,
           padding: parseFloat(padding.value),
+          region: regionSel.value,
+          maxLines: parseInt(maxLinesSel.value, 10),
         },
       });
     }
     fontSize.oninput = () => { fontVal.textContent = `${fontSize.value}vw`; sendStyle(); };
     padding.oninput = () => { padVal.textContent = `${padding.value}vw`; sendStyle(); };
     bgColor.oninput = sendStyle;
+    regionSel.onchange = sendStyle;
+    maxLinesSel.onchange = sendStyle;
 
     function connect() {
       const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -428,14 +552,14 @@
             syncStyleInputs(msg.style);
             populateDevices(msg.devices, msg.current_device);
             if (msg.script_terms > 0)
-              scriptMsg.textContent = `저장된 원고 · 교정 용어 ${msg.script_terms}개`;
+              scriptMsg.textContent = `${t("scriptSaved")} ${msg.script_terms}`;
             allLanguages = msg.languages || [];
             defaultColors = msg.default_colors || defaultColors;
             maxLanguages = msg.max_languages || 3;
             applyLayout(msg.layout || []);
             break;
           case "layout":
-            languageMsg.textContent = "언어를 적용했습니다.";
+            languageMsg.textContent = t("applied");
             applyLayout(msg.layout || []);
             break;
           case "backend_state":
@@ -447,30 +571,30 @@
             break;
           case "auth_error":
             document.getElementById("backend-msg").textContent =
-              "⚠ " + msg.message + " 주소에 ?token=… 을 붙여 여세요.";
+              "⚠ " + msg.message + " " + t("tokenHint");
             break;
           case "usage":
             applyUsage(msg);
             break;
           case "script_state":
             scriptMsg.textContent = msg.terms > 0
-              ? `원고 적용됨 · 교정 용어 ${msg.terms}개`
-              : "원고 없음";
+              ? `${t("scriptApplied")} ${msg.terms}`
+              : t("scriptNone");
             break;
           case "broadcast_state":
             broadcasting = msg.active;
             refreshBroadcastBtn();
-            languageMsg.textContent = broadcasting ? "방송 시작됨." : "방송 종료됨.";
+            languageMsg.textContent = broadcasting ? t("bcStarted") : t("bcStopped");
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);
-            deviceMsg.textContent = "목록을 새로고침했습니다.";
+            deviceMsg.textContent = t("devRefreshed");
             break;
           case "device_state":
-            deviceMsg.textContent = `입력 장치를 전환했습니다 → [${msg.current}]`;
+            deviceMsg.textContent = `${t("devSwitched")} [${msg.current}]`;
             break;
           case "device_error":
-            deviceMsg.textContent = `⚠ 장치 전환 실패: ${msg.message}`;
+            deviceMsg.textContent = `${t("devError")} ${msg.message}`;
             break;
           case "source":
             sourceEl.textContent = msg.text || "—";
@@ -494,6 +618,9 @@
       socket.onclose = () => { setConnected(false); setTimeout(connect, 1500); };
       socket.onerror = () => socket.close();
     }
+    applyI18n();
+    setConnected(false);
+    refreshBroadcastBtn();
     connect();
   </script>
 </body>
