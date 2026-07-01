@@ -29,7 +29,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
 from audio_input import AudioCapture, AudioFanout, input_devices, queue_chunks
@@ -442,6 +442,33 @@ async def overlay() -> FileResponse:
 @app.get("/operator")
 async def operator() -> FileResponse:
     return FileResponse(WEB_DIR / "operator" / "index.html")
+
+
+@app.get("/manifest.webmanifest")
+async def manifest() -> dict:
+    """송출 화면을 앱(PWA)으로 설치 가능하게 — 주소줄 없는 창으로 열림."""
+    return {
+        "name": "Sermon Subtitle",
+        "short_name": "Subtitle",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",   # 타이틀 바 O, 주소줄 X
+        "background_color": "#000000",
+        "theme_color": "#000000",
+        "icons": [
+            {"src": "/subtitle-overlay/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/subtitle-overlay/icon-512.png", "sizes": "512x512", "type": "image/png"},
+        ],
+    }
+
+
+@app.get("/subtitle-overlay/{fname}")
+async def overlay_asset(fname: str) -> FileResponse:
+    """송출 화면 정적 자원(아이콘 등)."""
+    path = (WEB_DIR / "subtitle-overlay" / fname).resolve()
+    if path.parent != (WEB_DIR / "subtitle-overlay").resolve() or not path.exists():
+        raise HTTPException(status_code=404)
+    return FileResponse(path)
 
 
 @app.get("/m")

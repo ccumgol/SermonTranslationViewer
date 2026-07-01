@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sermon Subtitle</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#000000" />
   <style>
     /* 프로젝터용 송출 화면: 단색 배경 + 언어별 행.
        언어가 1개면 화면 전체, 2~3개면 화면을 2~3행으로 나눠 표시한다. */
@@ -47,14 +49,24 @@
     }
     body:hover #fs-btn { opacity: 0.85; }
     :fullscreen #fs-btn { display: none; }
+    /* 전체화면 안내: 아직 전체화면이 아닐 때만 살짝 보이고 클릭하면 사라짐 */
+    #hint {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      color: rgba(255,255,255,0.55); font-size: 14px; font-family: sans-serif;
+      background: rgba(255,255,255,0.08); padding: 6px 14px; border-radius: 20px;
+      pointer-events: none; transition: opacity 0.4s ease;
+    }
+    :fullscreen #hint { display: none; }
   </style>
 </head>
 <body>
-  <button id="fs-btn" title="전체화면 토글 (더블클릭으로도 가능)">⛶</button>
+  <button id="fs-btn" title="전체화면 토글 (F 또는 더블클릭)">⛶</button>
   <div id="stage"></div>
+  <div id="hint">화면을 클릭(또는 F)하면 전체화면 — 검은 화면만 송출됩니다</div>
   <script>
     const stage = document.getElementById("stage");
     const fsBtn = document.getElementById("fs-btn");
+    const hint = document.getElementById("hint");
     let outputEnabled = true;
     let fontSize = 4;                 // vw
     const rowEls = {};               // code -> .row-text 엘리먼트
@@ -66,8 +78,14 @@
         document.exitFullscreen().catch(() => {});
       }
     }
-    fsBtn.onclick = toggleFullscreen;
-    document.addEventListener("dblclick", toggleFullscreen);
+    fsBtn.onclick = (e) => { e.stopPropagation(); toggleFullscreen(); };
+    // 화면 아무 곳이나 클릭하거나 F 키로 전체화면 토글
+    document.addEventListener("click", toggleFullscreen);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "f" || e.key === "F") toggleFullscreen();
+    });
+    // 8초 후 안내 문구 자동 흐려짐
+    setTimeout(() => { if (hint) hint.style.opacity = "0"; }, 8000);
 
     // 언어 레이아웃에 맞춰 행을 다시 만든다
     function buildLayout(layout) {
