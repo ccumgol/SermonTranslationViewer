@@ -54,19 +54,6 @@
     .slot { display: flex; gap: 8px; align-items: flex-end; }
     .target-line { font-size: 21px; line-height: 1.5; min-height: 1.6em; white-space: pre-wrap; margin-bottom: 8px; }
     .target-tag { font-size: 12px; color: #8a93a6; }
-    /* QR 큰 팝업 */
-    #qr-modal {
-      position: fixed; inset: 0; z-index: 1000; display: none;
-      background: rgba(0,0,0,0.9); cursor: zoom-out;
-      flex-direction: column; align-items: center; justify-content: center;
-    }
-    #qr-modal.open { display: flex; }
-    #qr-modal img {
-      width: min(72vh, 72vw); height: auto;
-      background: #fff; padding: 24px; border-radius: 20px;
-    }
-    #qr-modal .qr-url { color: #fff; font-size: 28px; font-weight: 700; margin-top: 24px; user-select: all; }
-    #qr-modal .qr-close { color: #aaa; font-size: 15px; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -184,10 +171,6 @@
     </div>
   </div>
 
-  <!-- QR 큰 팝업 -->
-  <div id="qr-modal">
-    <img id="qr-modal-img" alt="QR" />
-    <div class="qr-url" id="qr-modal-url"></div>
     <div class="qr-close" data-i18n="closeHint">아무 곳이나 클릭하면 닫힙니다</div>
   </div>
 
@@ -554,16 +537,15 @@
     // ── 모바일 주소 / QR ──
     let lastMobile = null;
     function qrUrl(url) { return "/qr.svg?text=" + encodeURIComponent(url); }
-    function openQrModal(url) {
-      document.getElementById("qr-modal-img").src = qrUrl(url);
-      document.getElementById("qr-modal-url").textContent = url;
-      document.getElementById("qr-modal").classList.add("open");
+    // QR 을 별도 창(팝업)으로 연다 → 운영자 대시보드·송출을 계속 쓰면서 열어둘 수 있음
+    let qrWin = null;
+    function openQrWindow(url) {
+      const target = "/qr-view?text=" + encodeURIComponent(url);
+      if (qrWin && !qrWin.closed) { qrWin.location.href = target; qrWin.focus(); return; }
+      qrWin = window.open(target, "sermon_qr",
+        "popup=yes,width=560,height=680,menubar=no,toolbar=no,location=no,status=no");
+      if (qrWin) qrWin.focus();
     }
-    document.getElementById("qr-modal").onclick = () =>
-      document.getElementById("qr-modal").classList.remove("open");
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") document.getElementById("qr-modal").classList.remove("open");
-    });
 
     function renderMobile(d) {
       lastMobile = d;
@@ -575,7 +557,7 @@
       img.src = qrUrl(d.mobile_url);
       img.title = t("enlarge");
       img.style = "width:150px; height:150px; background:#fff; padding:8px; border-radius:8px; cursor:zoom-in;";
-      img.onclick = () => openQrModal(d.mobile_url);
+      img.onclick = () => openQrWindow(d.mobile_url);
       const txt = document.createElement("div");
       const url = document.createElement("div");
       url.textContent = d.mobile_url;
@@ -583,7 +565,7 @@
       const enlarge = document.createElement("button");
       enlarge.className = "primary"; enlarge.style.marginTop = "8px";
       enlarge.textContent = t("enlarge");
-      enlarge.onclick = () => openQrModal(d.mobile_url);
+      enlarge.onclick = () => openQrWindow(d.mobile_url);
       const hint = document.createElement("div");
       hint.className = "muted"; hint.style.marginTop = "6px";
       hint.textContent = t("mobileHint");

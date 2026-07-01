@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>모바일 자막 QR / Mobile Subtitle QR</title>
+  <style>
+    html, body {
+      margin: 0; height: 100%;
+      background: #0b0d12; color: #fff;
+      font-family: -apple-system, "Noto Sans KR", sans-serif;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 20px;
+    }
+    #title { font-size: 20px; color: #9aa4b6; }
+    #qr {
+      width: min(70vh, 70vw); height: auto;
+      background: #fff; padding: 24px; border-radius: 20px;
+    }
+    #url { font-size: min(4vw, 30px); font-weight: 700; user-select: all; word-break: break-all; text-align: center; padding: 0 16px; }
+    #hint { font-size: 15px; color: #6f7893; }
+  </style>
+</head>
+<body>
+  <div id="title">📱 <span data-i18n="scanHere">폰으로 QR을 스캔하세요 · Scan to open subtitles</span></div>
+  <img id="qr" alt="QR" />
+  <div id="url">…</div>
+  <div id="hint">같은 와이파이에 연결한 뒤 스캔 · Connect to the same Wi-Fi, then scan</div>
+  <script>
+    function show(url) {
+      document.getElementById("qr").src = "/qr.svg?text=" + encodeURIComponent(url);
+      document.getElementById("url").textContent = url;
+    }
+    const param = new URLSearchParams(location.search).get("text");
+    if (param) {
+      show(param);
+    } else {
+      // 파라미터가 없으면 서버에서 직접 LAN 주소를 받아온다
+      fetch("/lan-info").then((r) => r.json()).then((d) => show(d.mobile_url))
+        .catch(() => { document.getElementById("url").textContent = "주소 확인 실패"; });
+    }
+  </script>
+</body>
+</html>

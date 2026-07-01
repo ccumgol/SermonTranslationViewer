@@ -491,6 +491,12 @@ async def mobile() -> FileResponse:
     return FileResponse(WEB_DIR / "mobile" / "index.html")
 
 
+@app.get("/qr-view")
+async def qr_view() -> FileResponse:
+    """QR 코드를 크게 보여주는 별도 창(운영자가 팝업으로 연다)."""
+    return FileResponse(WEB_DIR / "qr-view" / "index.html")
+
+
 def _lan_ips() -> tuple[str, list[str]]:
     """이 컴퓨터의 LAN IPv4 를 검출. (primary, 후보 목록) 반환. 오프라인에서도 동작."""
     primary = "127.0.0.1"
