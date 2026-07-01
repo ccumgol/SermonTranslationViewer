@@ -261,6 +261,8 @@
     };
     let lang = localStorage.getItem("op_lang") || "ko";
     function t(key) { return (I18N[lang] && I18N[lang][key]) || I18N.ko[key] || key; }
+    // 언어 전환 시에도 다시 번역되도록, 렌더 함수를 요소에 저장해두는 상태 메시지
+    function tmsg(el, fn) { el._i18n = fn; el.textContent = fn(); }
     function applyI18n() {
       document.querySelectorAll("[data-i18n]").forEach((el) => {
         el.innerHTML = t(el.getAttribute("data-i18n"));
@@ -331,13 +333,18 @@
       refreshBroadcastBtn();
       refreshOutputBtn();
       if (lastLayout) buildLangSlots(lastLayout);
+      // 저장해둔 상태 메시지들을 현재 언어로 다시 렌더
+      ["device-msg", "script-msg", "language-msg", "backend-msg"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && el._i18n) el.textContent = el._i18n();
+      });
     }
 
     document.getElementById("backend-badge").onclick = () => {
       if (!currentBackend) return;
       const next = currentBackend === "local" ? "gemini" : "local";
-      const msg = document.getElementById("backend-msg");
-      msg.textContent = next === "local" ? t("switchingLocal") : t("switchingGemini");
+      tmsg(document.getElementById("backend-msg"),
+        () => next === "local" ? t("switchingLocal") : t("switchingGemini"));
       send({ cmd: "set_backend", backend: next });
     };
 
@@ -443,7 +450,7 @@
           return;
         }
       }
-      languageMsg.textContent = t("applying");
+      tmsg(languageMsg, () => t("applying"));
       send({ cmd: "set_languages", languages });
     }
 
@@ -502,7 +509,7 @@
     const scriptText = document.getElementById("script-text");
     const scriptMsg = document.getElementById("script-msg");
     document.getElementById("btn-script").onclick = () => {
-      scriptMsg.textContent = t("scriptApplying");
+      tmsg(scriptMsg, () => t("scriptApplying"));
       send({ cmd: "set_script", text: scriptText.value });
     };
     document.getElementById("btn-script-clear").onclick = () => {
@@ -552,49 +559,49 @@
             syncStyleInputs(msg.style);
             populateDevices(msg.devices, msg.current_device);
             if (msg.script_terms > 0)
-              scriptMsg.textContent = `${t("scriptSaved")} ${msg.script_terms}`;
+              tmsg(scriptMsg, () => `${t("scriptSaved")} ${msg.script_terms}`);
             allLanguages = msg.languages || [];
             defaultColors = msg.default_colors || defaultColors;
             maxLanguages = msg.max_languages || 3;
             applyLayout(msg.layout || []);
             break;
           case "layout":
-            languageMsg.textContent = t("applied");
+            tmsg(languageMsg, () => t("applied"));
             applyLayout(msg.layout || []);
             break;
           case "backend_state":
             applyBackendBadge(msg.backend);
-            document.getElementById("backend-msg").textContent = "전환 완료.";
+            tmsg(document.getElementById("backend-msg"), () => t("switched"));
             break;
           case "backend_error":
-            document.getElementById("backend-msg").textContent = "⚠ " + msg.message;
+            tmsg(document.getElementById("backend-msg"), () => "⚠ " + msg.message);
             break;
           case "auth_error":
-            document.getElementById("backend-msg").textContent =
-              "⚠ " + msg.message + " " + t("tokenHint");
+            tmsg(document.getElementById("backend-msg"),
+              () => "⚠ " + msg.message + " " + t("tokenHint"));
             break;
           case "usage":
             applyUsage(msg);
             break;
           case "script_state":
-            scriptMsg.textContent = msg.terms > 0
+            tmsg(scriptMsg, () => msg.terms > 0
               ? `${t("scriptApplied")} ${msg.terms}`
-              : t("scriptNone");
+              : t("scriptNone"));
             break;
           case "broadcast_state":
             broadcasting = msg.active;
             refreshBroadcastBtn();
-            languageMsg.textContent = broadcasting ? t("bcStarted") : t("bcStopped");
+            tmsg(languageMsg, () => broadcasting ? t("bcStarted") : t("bcStopped"));
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);
-            deviceMsg.textContent = t("devRefreshed");
+            tmsg(deviceMsg, () => t("devRefreshed"));
             break;
           case "device_state":
-            deviceMsg.textContent = `${t("devSwitched")} [${msg.current}]`;
+            tmsg(deviceMsg, () => `${t("devSwitched")} [${msg.current}]`);
             break;
           case "device_error":
-            deviceMsg.textContent = `${t("devError")} ${msg.message}`;
+            tmsg(deviceMsg, () => `${t("devError")} ${msg.message}`);
             break;
           case "source":
             sourceEl.textContent = msg.text || "—";
