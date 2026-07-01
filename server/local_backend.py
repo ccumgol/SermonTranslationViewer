@@ -40,7 +40,9 @@ SAMPLE_RATE = 16000
 # 이 RMS(정규화 -1~1) 미만은 침묵으로 본다. 마이크/환경에 맞춰 env 로 조정.
 SILENCE_RMS = float(os.getenv("STT_SILENCE_RMS", "0.015"))
 # 발화 후 이 시간(초) 이상 조용하면 한 구간으로 확정해 전사.
-MIN_SILENCE_SEC = float(os.getenv("STT_MIN_SILENCE_SEC", "0.7"))
+# 너무 낮으면 숨 쉬는 짧은 멈춤에도 잘려 문장 중간에 마침표가 생긴다.
+# 높이면 문장 단위로 깔끔하지만 자막이 조금 늦게 뜬다(반응성↔정확성).
+MIN_SILENCE_SEC = float(os.getenv("STT_MIN_SILENCE_SEC", "0.9"))
 # 너무 짧은 잡음은 무시(실제 발화 최소 길이).
 MIN_SPEECH_SEC = 0.3
 # 쉼 없이 길게 말하면 이 길이에서 강제로 끊어 전사(지연 상한).
@@ -119,7 +121,8 @@ class KoreanSTT:
         silence_sec = 0.0
         speech_sec = 0.0
 
-        async def finalize() -> None:
+        async def finalize(forced: bool) -> None:
+            # forced=True → 침묵이 아니라 최대 길이로 강제 분할(= 문장 중간).
             nonlocal seg, in_speech, silence_sec, speech_sec
             audio = np.concatenate(seg) if seg else None
             seg = []
@@ -138,6 +141,9 @@ class KoreanSTT:
                 print(f"[local] 전사 실패: {exc}")
                 return
             text = (getattr(result, "text", "") or "").strip()
+            # 문장 중간 강제 분할이면 끝의 마침표류를 떼어 다음 조각과 자연스럽게 이어지게
+            if forced:
+                text = text.rstrip(" .。…!?！？")
             if self._script is not None:
                 text = self._script.correct(text)   # 원고 기반 발음 유사도 교정
             text = self._glossary.correct(text)     # 용어집 후처리 치환(정확 규칙)
@@ -165,10 +171,10 @@ class KoreanSTT:
                     silence_sec += _CHUNK_SEC
 
                 seg_sec = len(seg) * _CHUNK_SEC
-                if in_speech and (
-                    silence_sec >= MIN_SILENCE_SEC or seg_sec >= MAX_SEGMENT_SEC
-                ):
-                    await finalize()
+                if in_speech and silence_sec >= MIN_SILENCE_SEC:
+                    await finalize(forced=False)     # 침묵 = 문장 끝일 가능성
+                elif in_speech and seg_sec >= MAX_SEGMENT_SEC:
+                    await finalize(forced=True)      # 강제 분할 = 문장 중간
         finally:
             self._fanout.unsubscribe(queue)
 
