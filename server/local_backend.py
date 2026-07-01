@@ -51,6 +51,7 @@ _CHUNK_SEC = 0.1  # fanout 청크 = 100ms
 # 번역 프롬프트에 쓸 언어 이름은 languages.py 단일 출처 사용
 from glossary import Glossary  # noqa: E402
 from languages import LANGUAGE_NAMES  # noqa: E402
+from sermon_script import ScriptCorrector  # noqa: E402
 
 
 class KoreanSTT:
@@ -66,9 +67,11 @@ class KoreanSTT:
         fanout: AudioFanout,
         loop: asyncio.AbstractEventLoop,
         glossary: Glossary | None = None,
+        script: "ScriptCorrector | None" = None,
     ) -> None:
         self._fanout = fanout
         self._loop = loop
+        self._script = script
         self._glossary = glossary or Glossary()
         self._subscribers: set = set()
         self._task: asyncio.Task | None = None
@@ -135,7 +138,9 @@ class KoreanSTT:
                 print(f"[local] 전사 실패: {exc}")
                 return
             text = (getattr(result, "text", "") or "").strip()
-            text = self._glossary.correct(text)     # 용어집 후처리 치환
+            if self._script is not None:
+                text = self._script.correct(text)   # 원고 기반 발음 유사도 교정
+            text = self._glossary.correct(text)     # 용어집 후처리 치환(정확 규칙)
             if text:
                 self._publish("delta", text + " ")  # 한국어 화면 표시
                 self._publish("sentence", text)     # 번역 대상
@@ -276,7 +281,10 @@ class LocalBackend:
     name = "local"
 
     def __init__(
-        self, fanout: AudioFanout, loop: asyncio.AbstractEventLoop
+        self,
+        fanout: AudioFanout,
+        loop: asyncio.AbstractEventLoop,
+        script: ScriptCorrector | None = None,
     ) -> None:
         self._glossary = Glossary.load()  # data/glossary/glossary.txt (있으면)
         if not self._glossary.is_empty:
@@ -284,7 +292,7 @@ class LocalBackend:
                 f"[local] 용어집 로드: 치환 {len(self._glossary.corrections)}개 / "
                 f"용어 {len(self._glossary.terms)}개"
             )
-        self._stt = KoreanSTT(fanout, loop, glossary=self._glossary)
+        self._stt = KoreanSTT(fanout, loop, glossary=self._glossary, script=script)
         # 번역 모델을 미리 메모리에 올려둔다(첫 문장 콜드 로딩 지연 방지)
         self._warmup_task = loop.create_task(self._warmup())
 

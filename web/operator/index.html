@@ -91,6 +91,18 @@
       <div class="muted" id="language-msg" style="margin-top:8px;"></div>
     </div>
 
+    <!-- 설교 원고 (전사 교정용) -->
+    <div class="card full">
+      <div class="label">설교 원고 — 붙여넣으면 고유명사를 뽑아 전사를 자동 교정 (예: 티브리어→히브리어)</div>
+      <textarea id="script-text" rows="4" placeholder="설교 원고를 여기에 붙여넣으세요. 성경 고유명사·인명·지명이 정확히 인식되도록 도와줍니다."
+        style="width:100%; box-sizing:border-box; background:#1c1f27; color:#e6e8ec; border:1px solid #333; border-radius:8px; padding:10px; font-size:14px; resize:vertical;"></textarea>
+      <div class="row" style="margin-top:8px; align-items:center;">
+        <button id="btn-script" class="primary">원고 적용</button>
+        <button id="btn-script-clear">지우기</button>
+        <span id="script-msg" class="muted"></span>
+      </div>
+    </div>
+
     <!-- 제어 패널 -->
     <div class="card full">
       <div class="label">송출 제어</div>
@@ -366,6 +378,18 @@
       send({ cmd: "set_broadcast", active: next });
     };
 
+    // ── 설교 원고 ──
+    const scriptText = document.getElementById("script-text");
+    const scriptMsg = document.getElementById("script-msg");
+    document.getElementById("btn-script").onclick = () => {
+      scriptMsg.textContent = "적용 중…";
+      send({ cmd: "set_script", text: scriptText.value });
+    };
+    document.getElementById("btn-script-clear").onclick = () => {
+      scriptText.value = "";
+      send({ cmd: "set_script", text: "" });
+    };
+
     // ── 제어 동작 ──
     btnReset.onclick = () => send({ cmd: "reset" });
     btnOutput.onclick = () => {
@@ -403,6 +427,8 @@
             refreshBroadcastBtn();
             syncStyleInputs(msg.style);
             populateDevices(msg.devices, msg.current_device);
+            if (msg.script_terms > 0)
+              scriptMsg.textContent = `저장된 원고 · 교정 용어 ${msg.script_terms}개`;
             allLanguages = msg.languages || [];
             defaultColors = msg.default_colors || defaultColors;
             maxLanguages = msg.max_languages || 3;
@@ -425,6 +451,11 @@
             break;
           case "usage":
             applyUsage(msg);
+            break;
+          case "script_state":
+            scriptMsg.textContent = msg.terms > 0
+              ? `원고 적용됨 · 교정 용어 ${msg.terms}개`
+              : "원고 없음";
             break;
           case "broadcast_state":
             broadcasting = msg.active;
