@@ -24,13 +24,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from audio_input import AudioCapture, AudioFanout, input_devices, queue_chunks
 from config import Settings
@@ -488,6 +489,56 @@ async def overlay_asset(fname: str) -> FileResponse:
 async def mobile() -> FileResponse:
     """교인용 모바일 자막 — 폰에서 언어를 골라 그 언어만 본다(읽기 전용)."""
     return FileResponse(WEB_DIR / "mobile" / "index.html")
+
+
+def _lan_ips() -> tuple[str, list[str]]:
+    """이 컴퓨터의 LAN IPv4 를 검출. (primary, 후보 목록) 반환. 오프라인에서도 동작."""
+    primary = "127.0.0.1"
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))  # 패킷 전송 없이 기본 경로의 로컬 IP 만 확인
+        primary = s.getsockname()[0]
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        s.close()
+    candidates = {primary}
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127."):
+                candidates.add(ip)
+    except Exception:  # noqa: BLE001
+        pass
+    ordered = [primary] + [c for c in sorted(candidates) if c != primary]
+    return primary, ordered
+
+
+@app.get("/lan-info")
+async def lan_info() -> dict:
+    """모바일 접속 주소(LAN IP) 안내 — 운영자 화면의 'QR' 기능이 사용."""
+    primary, candidates = _lan_ips()
+    port = state.settings.ws_port if state.settings else 8000
+    return {
+        "primary": primary,
+        "port": port,
+        "mobile_url": f"http://{primary}:{port}/m",
+        "candidates": [
+            {"ip": ip, "mobile_url": f"http://{ip}:{port}/m"} for ip in candidates
+        ],
+    }
+
+
+@app.get("/qr.svg")
+async def qr_svg(text: str) -> Response:
+    """주어진 텍스트(URL)의 QR 코드를 SVG 로 생성해 반환 (로컬 생성, 인터넷 불필요)."""
+    import io
+
+    import segno
+
+    buf = io.BytesIO()
+    segno.make(text, error="m").save(buf, kind="svg", scale=6, border=2, dark="#000", light="#fff")
+    return Response(content=buf.getvalue(), media_type="image/svg+xml")
 
 
 @app.get("/health")

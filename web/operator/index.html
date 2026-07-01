@@ -87,6 +87,15 @@
       </div>
     </div>
 
+    <!-- 모바일 자막 주소 / QR -->
+    <div class="card full">
+      <div class="label" data-i18n="mobileTitle">모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기</div>
+      <div class="row" style="align-items:center;">
+        <button id="btn-mobile" class="primary" data-i18n="extractMobile">📱 모바일 주소 / QR 추출</button>
+        <div id="mobile-info" style="flex:1;"></div>
+      </div>
+    </div>
+
     <!-- 번역 언어 선택 (최대 3개, 행별 색상) -->
     <div class="card full">
       <div class="label" data-i18n="langCardHint">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
@@ -225,6 +234,8 @@
         scriptSaved: "저장된 원고 · 교정 용어", scriptNone: "원고 없음", scriptApplying: "적용 중…",
         bcStarted: "방송 시작됨.", bcStopped: "방송 종료됨.",
         devRefreshed: "목록을 새로고침했습니다.", devSwitched: "입력 장치를 전환했습니다 →", devError: "⚠ 장치 전환 실패:", tokenHint: "주소에 ?token=… 을 붙여 여세요.",
+        mobileTitle: "모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기", extractMobile: "📱 모바일 주소 / QR 추출",
+        detecting: "주소 확인 중…", mobileHint: "폰을 같은 와이파이에 연결한 뒤 QR을 스캔하거나 주소를 입력하세요.", otherAddrs: "다른 주소 후보:", mobileFail: "⚠ 주소 확인 실패",
       },
       en: {
         title: "Sermon Live Translation — Operator Dashboard",
@@ -257,6 +268,8 @@
         scriptSaved: "Saved script · terms", scriptNone: "No script", scriptApplying: "Applying…",
         bcStarted: "Broadcast started.", bcStopped: "Broadcast stopped.",
         devRefreshed: "Device list refreshed.", devSwitched: "Input device switched →", devError: "⚠ Device switch failed:", tokenHint: "add ?token=… to the URL.",
+        mobileTitle: "Mobile subtitle URL (for attendees) — read subtitles in your language on your phone", extractMobile: "📱 Get mobile URL / QR",
+        detecting: "Detecting address…", mobileHint: "Connect your phone to the same Wi-Fi, then scan the QR or type the URL.", otherAddrs: "Other candidates:", mobileFail: "⚠ Failed to detect address",
       },
     };
     let lang = localStorage.getItem("op_lang") || "ko";
@@ -338,6 +351,7 @@
         const el = document.getElementById(id);
         if (el && el._i18n) el.textContent = el._i18n();
       });
+      if (lastMobile) renderMobile(lastMobile);
     }
 
     document.getElementById("backend-badge").onclick = () => {
@@ -515,6 +529,45 @@
     document.getElementById("btn-script-clear").onclick = () => {
       scriptText.value = "";
       send({ cmd: "set_script", text: "" });
+    };
+
+    // ── 모바일 주소 / QR ──
+    let lastMobile = null;
+    function renderMobile(d) {
+      lastMobile = d;
+      const box = document.getElementById("mobile-info");
+      box.innerHTML = "";
+      const wrap = document.createElement("div");
+      wrap.style = "display:flex; gap:16px; align-items:center; flex-wrap:wrap;";
+      const img = document.createElement("img");
+      img.src = "/qr.svg?text=" + encodeURIComponent(d.mobile_url);
+      img.style = "width:150px; height:150px; background:#fff; padding:8px; border-radius:8px;";
+      const txt = document.createElement("div");
+      const url = document.createElement("div");
+      url.textContent = d.mobile_url;
+      url.style = "font-size:20px; font-weight:700; user-select:all;";
+      const hint = document.createElement("div");
+      hint.className = "muted"; hint.style.marginTop = "6px";
+      hint.textContent = t("mobileHint");
+      txt.appendChild(url); txt.appendChild(hint);
+      if ((d.candidates || []).length > 1) {
+        const alt = document.createElement("div");
+        alt.className = "muted"; alt.style.marginTop = "6px";
+        alt.textContent = t("otherAddrs") + " " + d.candidates.map((c) => c.mobile_url).join("  ·  ");
+        txt.appendChild(alt);
+      }
+      wrap.appendChild(img); wrap.appendChild(txt);
+      box.appendChild(wrap);
+    }
+    document.getElementById("btn-mobile").onclick = async () => {
+      const box = document.getElementById("mobile-info");
+      box.textContent = t("detecting");
+      try {
+        const r = await fetch("/lan-info");
+        renderMobile(await r.json());
+      } catch (e) {
+        box.textContent = t("mobileFail");
+      }
     };
 
     // ── 제어 동작 ──

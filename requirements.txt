@@ -11,3 +11,6 @@ uvicorn[standard]>=0.27
 
 # 환경변수(.env) 로드
 python-dotenv>=1.0
+
+# 모바일 주소 QR 코드 생성 (순수 파이썬, 의존성 없음, 오프라인 동작)
+segno>=1.5
