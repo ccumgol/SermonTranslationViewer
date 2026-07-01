@@ -28,9 +28,10 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 
 # 모델은 환경변수로 교체 가능 (정확도↔속도)
 #   STT: Qwen/Qwen3-ASR-0.6B (빠름) / Qwen/Qwen3-ASR-1.7B (정확)
-#   MT : translategemma:12b (정확) / translategemma:4b (빠름)
+#   MT : translategemma:4b (빠름·기본) / translategemma:12b (정확)
+#        4b 가 12b 보다 약 2배 빠르고 설교 자막 품질도 충분 → 기본값을 4b 로.
 STT_MODEL = os.getenv("STT_MODEL", "Qwen/Qwen3-ASR-0.6B")
-MT_MODEL = os.getenv("MT_MODEL", "translategemma:12b")
+MT_MODEL = os.getenv("MT_MODEL", "translategemma:4b")
 
 # ── VAD(침묵 감지) 기반 발화 구간 잘라내기 파라미터 ──
 # Qwen3-ASR 의 스트리밍 모드는 정확도가 크게 떨어지므로, 침묵으로 발화를 끊어
@@ -43,7 +44,8 @@ MIN_SILENCE_SEC = float(os.getenv("STT_MIN_SILENCE_SEC", "0.7"))
 # 너무 짧은 잡음은 무시(실제 발화 최소 길이).
 MIN_SPEECH_SEC = 0.3
 # 쉼 없이 길게 말하면 이 길이에서 강제로 끊어 전사(지연 상한).
-MAX_SEGMENT_SEC = float(os.getenv("STT_MAX_SEGMENT_SEC", "12.0"))
+# 낮추면 자막이 더 자주·빨리 뜨지만 문장 중간에서 끊길 수 있다(번역 품질 ↔ 반응성).
+MAX_SEGMENT_SEC = float(os.getenv("STT_MAX_SEGMENT_SEC", "8.0"))
 _CHUNK_SEC = 0.1  # fanout 청크 = 100ms
 
 # 번역 프롬프트에 쓸 언어 이름은 languages.py 단일 출처 사용
