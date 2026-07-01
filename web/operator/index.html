@@ -54,6 +54,19 @@
     .slot { display: flex; gap: 8px; align-items: flex-end; }
     .target-line { font-size: 21px; line-height: 1.5; min-height: 1.6em; white-space: pre-wrap; margin-bottom: 8px; }
     .target-tag { font-size: 12px; color: #8a93a6; }
+    /* QR 큰 팝업 */
+    #qr-modal {
+      position: fixed; inset: 0; z-index: 1000; display: none;
+      background: rgba(0,0,0,0.9); cursor: zoom-out;
+      flex-direction: column; align-items: center; justify-content: center;
+    }
+    #qr-modal.open { display: flex; }
+    #qr-modal img {
+      width: min(72vh, 72vw); height: auto;
+      background: #fff; padding: 24px; border-radius: 20px;
+    }
+    #qr-modal .qr-url { color: #fff; font-size: 28px; font-weight: 700; margin-top: 24px; user-select: all; }
+    #qr-modal .qr-close { color: #aaa; font-size: 15px; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -171,6 +184,13 @@
     </div>
   </div>
 
+  <!-- QR 큰 팝업 -->
+  <div id="qr-modal">
+    <img id="qr-modal-img" alt="QR" />
+    <div class="qr-url" id="qr-modal-url"></div>
+    <div class="qr-close" data-i18n="closeHint">아무 곳이나 클릭하면 닫힙니다</div>
+  </div>
+
   <script>
     const sourceEl = document.getElementById("source");
     const targetList = document.getElementById("target-list");
@@ -235,7 +255,7 @@
         bcStarted: "방송 시작됨.", bcStopped: "방송 종료됨.",
         devRefreshed: "목록을 새로고침했습니다.", devSwitched: "입력 장치를 전환했습니다 →", devError: "⚠ 장치 전환 실패:", tokenHint: "주소에 ?token=… 을 붙여 여세요.",
         mobileTitle: "모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기", extractMobile: "📱 모바일 주소 / QR 추출",
-        detecting: "주소 확인 중…", mobileHint: "폰을 같은 와이파이에 연결한 뒤 QR을 스캔하거나 주소를 입력하세요.", otherAddrs: "다른 주소 후보:", mobileFail: "⚠ 주소 확인 실패",
+        detecting: "주소 확인 중…", mobileHint: "폰을 같은 와이파이에 연결한 뒤 QR을 스캔하거나 주소를 입력하세요.", otherAddrs: "다른 주소 후보:", mobileFail: "⚠ 주소 확인 실패", enlarge: "🔍 QR 크게 보기", closeHint: "아무 곳이나 클릭(또는 Esc)하면 닫힙니다",
       },
       en: {
         title: "Sermon Live Translation — Operator Dashboard",
@@ -269,7 +289,7 @@
         bcStarted: "Broadcast started.", bcStopped: "Broadcast stopped.",
         devRefreshed: "Device list refreshed.", devSwitched: "Input device switched →", devError: "⚠ Device switch failed:", tokenHint: "add ?token=… to the URL.",
         mobileTitle: "Mobile subtitle URL (for attendees) — read subtitles in your language on your phone", extractMobile: "📱 Get mobile URL / QR",
-        detecting: "Detecting address…", mobileHint: "Connect your phone to the same Wi-Fi, then scan the QR or type the URL.", otherAddrs: "Other candidates:", mobileFail: "⚠ Failed to detect address",
+        detecting: "Detecting address…", mobileHint: "Connect your phone to the same Wi-Fi, then scan the QR or type the URL.", otherAddrs: "Other candidates:", mobileFail: "⚠ Failed to detect address", enlarge: "🔍 Enlarge QR", closeHint: "Click anywhere (or Esc) to close",
       },
     };
     let lang = localStorage.getItem("op_lang") || "ko";
@@ -533,6 +553,18 @@
 
     // ── 모바일 주소 / QR ──
     let lastMobile = null;
+    function qrUrl(url) { return "/qr.svg?text=" + encodeURIComponent(url); }
+    function openQrModal(url) {
+      document.getElementById("qr-modal-img").src = qrUrl(url);
+      document.getElementById("qr-modal-url").textContent = url;
+      document.getElementById("qr-modal").classList.add("open");
+    }
+    document.getElementById("qr-modal").onclick = () =>
+      document.getElementById("qr-modal").classList.remove("open");
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") document.getElementById("qr-modal").classList.remove("open");
+    });
+
     function renderMobile(d) {
       lastMobile = d;
       const box = document.getElementById("mobile-info");
@@ -540,16 +572,22 @@
       const wrap = document.createElement("div");
       wrap.style = "display:flex; gap:16px; align-items:center; flex-wrap:wrap;";
       const img = document.createElement("img");
-      img.src = "/qr.svg?text=" + encodeURIComponent(d.mobile_url);
-      img.style = "width:150px; height:150px; background:#fff; padding:8px; border-radius:8px;";
+      img.src = qrUrl(d.mobile_url);
+      img.title = t("enlarge");
+      img.style = "width:150px; height:150px; background:#fff; padding:8px; border-radius:8px; cursor:zoom-in;";
+      img.onclick = () => openQrModal(d.mobile_url);
       const txt = document.createElement("div");
       const url = document.createElement("div");
       url.textContent = d.mobile_url;
       url.style = "font-size:20px; font-weight:700; user-select:all;";
+      const enlarge = document.createElement("button");
+      enlarge.className = "primary"; enlarge.style.marginTop = "8px";
+      enlarge.textContent = t("enlarge");
+      enlarge.onclick = () => openQrModal(d.mobile_url);
       const hint = document.createElement("div");
       hint.className = "muted"; hint.style.marginTop = "6px";
       hint.textContent = t("mobileHint");
-      txt.appendChild(url); txt.appendChild(hint);
+      txt.appendChild(url); txt.appendChild(hint); txt.appendChild(enlarge);
       if ((d.candidates || []).length > 1) {
         const alt = document.createElement("div");
         alt.className = "muted"; alt.style.marginTop = "6px";
