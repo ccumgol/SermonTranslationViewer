@@ -37,11 +37,14 @@ from config import Settings
 from languages import LANGUAGES, VALID_CODES
 from live_session import TranscriptEvent
 from local_backend import LocalBackend
+from sermon_script import ScriptCorrector
 from subtitle_engine import RollingTranscript, SubtitleEngine
 from transcript_logger import TranscriptLogger
 from translation_backend import GeminiBackend, TranslationBackend
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+# 설교 원고 저장 위치(재시작 후에도 유지). data/ 는 git 제외.
+SCRIPT_PATH = Path(__file__).resolve().parent.parent / "data" / "sermons" / "current_script.txt"
 
 # 온라인(Gemini) 분당 단가(USD, 입력+출력 전사 기준) — 예상 비용 표시용
 COST_PER_MIN = float(os.getenv("COST_PER_MIN", "0.037"))
@@ -132,9 +135,11 @@ class LangWorker:
         if ev.kind == "source":
             # 입력(설교) 전사는 대표 워커 하나만 송출 (중복 방지)
             if is_primary and state.source_roller is not None:
-                sub = state.source_roller.add_delta(ev.text, ev.is_final)
+                # 원고 기반 교정(로컬은 STT 에서 이미 적용=무해, 온라인은 여기서 표시 교정)
+                text = state.script.correct(ev.text)
+                sub = state.source_roller.add_delta(text, ev.is_final)
                 if ev.is_final and state.logger is not None:
-                    state.logger.log("ko", ev.text)
+                    state.logger.log("ko", text)
                 self._loop.create_task(
                     hub.broadcast(
                         {"type": "source", "text": sub.text, "final": sub.is_final}
@@ -191,6 +196,7 @@ class AppState:
     started_at: float = 0.0
     last_speech_at: float = 0.0
     logger: TranscriptLogger | None = None
+    script: ScriptCorrector = field(default_factory=ScriptCorrector)
     # 워커 재구성(언어/백엔드/장치) 동시 실행 방지 — 유령 워커 발생 차단
     reconfig_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -246,7 +252,7 @@ def _sanitize_languages(raw: object) -> list[dict]:
 def _build_backend(name: str) -> TranslationBackend:
     """이름으로 백엔드 인스턴스 생성 (fanout/loop 가 준비된 뒤 호출)."""
     if name == "local":
-        return LocalBackend(state.fanout, state.loop)
+        return LocalBackend(state.fanout, state.loop, script=state.script)
     return GeminiBackend(state.settings)
 
 
@@ -350,6 +356,11 @@ async def pipeline(settings: Settings) -> None:
     state.logger = TranscriptLogger.maybe_create()
     if state.logger is not None:
         print(f"[server] 전사 로깅 ON → {state.logger.path}")
+    # 저장된 설교 원고가 있으면 불러와 교정 용어 준비
+    if SCRIPT_PATH.exists():
+        n = state.script.set_script(SCRIPT_PATH.read_text(encoding="utf-8"))
+        if n:
+            print(f"[server] 저장된 설교 원고 로드 — 교정 용어 {n}개")
 
     async with AudioCapture(settings.audio_input_device) as capture:
         state.capture = capture
@@ -359,7 +370,7 @@ async def pipeline(settings: Settings) -> None:
 
         # 백엔드 선택 (온라인 Gemini / 오프라인 로컬)
         if settings.backend == "local":
-            state.backend = LocalBackend(fanout, state.loop)
+            state.backend = LocalBackend(fanout, state.loop, script=state.script)
             print("[server] 백엔드: local (Qwen3-ASR + TranslateGemma)")
         else:
             state.backend = GeminiBackend(settings)
@@ -527,6 +538,23 @@ async def _handle_command(cmd: dict) -> None:
                 "current": state.capture.current_device if state.capture else None,
             }
         )
+    elif name == "set_script":
+        await _set_script(cmd.get("text", ""))
+
+
+async def _set_script(text: str) -> None:
+    """설교 원고를 설정 — 교정 용어 추출 + 저장 + 상태 전파."""
+    text = text or ""
+    n = state.script.set_script(text)
+    try:
+        SCRIPT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SCRIPT_PATH.write_text(text, encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[server] 원고 저장 실패(무시): {exc}")
+    print(f"[server] 설교 원고 적용 — 교정 용어 {n}개")
+    await hub.broadcast(
+        {"type": "script_state", "terms": n, "chars": len(text)}
+    )
 
 
 async def _switch_device(device) -> None:  # noqa: ANN001
@@ -566,6 +594,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 "current_device": (
                     state.capture.current_device if state.capture else None
                 ),
+                "script_terms": len(state.script.terms),
             },
             ensure_ascii=False,
         )
