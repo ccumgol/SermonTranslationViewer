@@ -56,6 +56,8 @@ DEFAULT_STYLE: dict = {
     "fontSize": 4.0,       # vw 단위 글자 크기
     "bgColor": "#000000",  # 화면 전체 배경색 (검정 / 그린스크린 등)
     "padding": 4.0,        # 화면 테두리에서의 안여백 (vw)
+    "region": "full",      # 자막 영역: full(전체) / bottom(하단 밴드) / top(상단 밴드)
+    "maxLines": 0,         # 언어별 최대 줄 수 (0=제한없음). 예: 2 → 항상 2줄
 }
 
 # 언어 정의는 languages.py 단일 출처 사용

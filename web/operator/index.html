@@ -126,6 +126,25 @@
           <span class="label">안여백(테두리 간격) <span class="val" id="pad-val">4vw</span></span>
           <input type="range" id="padding" min="0" max="12" step="0.5" value="4" />
         </div>
+
+        <div class="ctl-group">
+          <span class="label">자막 영역</span>
+          <select id="region" style="min-width:130px;">
+            <option value="full">전체 화면</option>
+            <option value="bottom">하단 밴드</option>
+            <option value="top">상단 밴드</option>
+          </select>
+        </div>
+
+        <div class="ctl-group">
+          <span class="label">최대 줄 수</span>
+          <select id="max-lines" style="min-width:120px;">
+            <option value="0">제한 없음</option>
+            <option value="1">1줄</option>
+            <option value="2">2줄</option>
+            <option value="3">3줄</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -154,6 +173,8 @@
     const fontVal = document.getElementById("font-val");
     const bgColor = document.getElementById("bg-color");
     const padding = document.getElementById("padding");
+    const regionSel = document.getElementById("region");
+    const maxLinesSel = document.getElementById("max-lines");
     const padVal = document.getElementById("pad-val");
     const deviceSelect = document.getElementById("device-select");
     const btnRefreshDevices = document.getElementById("btn-refresh-devices");
@@ -240,6 +261,8 @@
       if (s.fontSize != null) { fontSize.value = s.fontSize; fontVal.textContent = `${s.fontSize}vw`; }
       if (s.bgColor != null) bgColor.value = s.bgColor;
       if (s.padding != null) { padding.value = s.padding; padVal.textContent = `${s.padding}vw`; }
+      if (s.region != null) regionSel.value = s.region;
+      if (s.maxLines != null) maxLinesSel.value = String(s.maxLines);
     }
 
     // ── 오디오 소스 ──
@@ -405,12 +428,16 @@
           fontSize: parseFloat(fontSize.value),
           bgColor: bgColor.value,
           padding: parseFloat(padding.value),
+          region: regionSel.value,
+          maxLines: parseInt(maxLinesSel.value, 10),
         },
       });
     }
     fontSize.oninput = () => { fontVal.textContent = `${fontSize.value}vw`; sendStyle(); };
     padding.oninput = () => { padVal.textContent = `${padding.value}vw`; sendStyle(); };
     bgColor.oninput = sendStyle;
+    regionSel.onchange = sendStyle;
+    maxLinesSel.onchange = sendStyle;
 
     function connect() {
       const proto = location.protocol === "https:" ? "wss" : "ws";
