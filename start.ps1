@@ -21,4 +21,9 @@ Write-Host "   셀폰 자막:   http://(이PC의IP):8000/m"
 Write-Host "   (종료: Ctrl+C)"
 Write-Host ""
 
+# 서버가 뜨면 운영자 화면 자동 열기 ($env:OPEN_BROWSER='0' 이면 끔)
+if ($env:OPEN_BROWSER -ne "0") {
+  Start-Job { Start-Sleep 4; Start-Process "http://localhost:8000/operator" } | Out-Null
+}
+
 python -m server

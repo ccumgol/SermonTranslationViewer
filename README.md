@@ -156,3 +156,6 @@ data/                   원고·로그·용어집 (git 제외)
 | 패키지 실행 | `python -m server` |
 | 종료 | `Ctrl+C` |
 | 실행 중 백엔드 전환 | 운영자 화면 배지 클릭 |
+
+> `./start.sh` 는 서버가 뜨면 **운영자 화면을 자동으로 브라우저에 엽니다.**
+> 원치 않으면 `OPEN_BROWSER=0 ./start.sh` (Windows: `set OPEN_BROWSER=0`).
