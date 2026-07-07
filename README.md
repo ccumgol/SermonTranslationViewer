@@ -7,6 +7,7 @@
 > 📖 English: [README.en.md](README.en.md)
 > 🛠 설치·운영 매뉴얼: [docs/setup-guide.md](docs/setup-guide.md)
 > 🎓 개발 중 만난 에러와 해결 과정(교육용): [docs/troubleshooting-log.md](docs/troubleshooting-log.md)
+> 🧭 인수인계 보고서(전체 이해·개발 인계): [docs/handover.md](docs/handover.md)
 
 ## 핵심 기능
 
