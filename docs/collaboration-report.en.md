@@ -110,9 +110,9 @@ If an agent stops abruptly, one line from the user is enough:
 | Area | State |
 |---|---|
 | Features | **Production-usable**: online/offline dual track, 1–3 languages, mobile subtitles & QR, script correction |
-| Tests | **39 passing** — 20 unit + 11 WS/auth + 8 abuse-limit |
+| Tests | **49 passing** — 20 unit + 11 WS/auth + 8 abuse-limit + 10 style validation |
 | Docs | README · setup-guide · troubleshooting · handover · analysis (KO/EN) |
-| Security | **Phases 1–2 done** (C-1, C-2, H-1 / H-3, H-4). H-2 and M/L not started |
+| Security | **Phases 1–2 + M-2 done** (C-1, C-2, H-1 / H-3, H-4 / M-2). H-2, M-1·M-3·M-5, L not started |
 | Deployment | LAN-only assumption. `main` is stable; features go on branches then merge |
 
 ---
@@ -235,6 +235,35 @@ forever**. Use a command that always responds, or assert on **server state/resul
 
 ---
 
+### 3.4 M-2 style validation + mobile language persistence (2026-07-08, Agent B)
+
+**M-2 `set_style` whitelist validation** — previously arbitrary keys were merged into state and
+color length was unbounded, so junk values could propagate to every client (including the output screen).
+
+| Field | Allowed |
+|---|---|
+| `fontSize` | number, clamped 1–20 |
+| `padding` | number, 0–30 |
+| `maxLines` | int, 0–10 |
+| `region` | only `full`/`bottom`/`top` |
+| `bgColor` | only `#RGB` or `#RRGGBB` |
+| any other key | **dropped** |
+
+- Explicitly rejects `bool` (since `bool` is a subclass of `int` in Python).
+- Language colors (`_sanitize_languages`) now use the same `_is_hex_color` check
+  (previously only checked a leading `#`).
+- Real-server check: malicious input
+  `{evil:"<script>", bgColor:"#zzz…3000 chars", fontSize:99999, region:"diagonal", maxLines:9999}`
+  → result `{fontSize:20, bgColor:"#000000", padding:4, region:"full", maxLines:10}` (all blocked/clamped)
+- Tests: `tests/test_style_validation.py` (10). **Mutation-verified**: disabling the whole
+  validator fails 7, disabling only the color check fails 2. Total **49 passed**.
+
+**7.2 Mobile language persistence** — the chosen language is saved in `localStorage` and restored
+on reconnect/refresh (the auto-selected language on first visit is saved too). Wrapped in
+`try/catch` so private-browsing storage failures don't break anything.
+
+---
+
 ## 4. Work Board
 
 Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (intentional)
@@ -249,7 +278,7 @@ Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (inten
 | H-3 | Rate limit on operator commands | 🟢 Done | Agent B | 2026-07-08 · 2s (backend 10s), mutation-verified |
 | H-4 | WS message size / connection caps | 🟢 Done | Agent B | 2026-07-08 · script 100k chars · 100 conns · 512KB msg |
 | M-1 | Send internal info in `init` only after auth | 🔴 Not started | — | Device names etc. |
-| M-2 | Whitelist-validate `set_style` | 🔴 Not started | — | Pydantic |
+| M-2 | Whitelist-validate `set_style` | 🟢 Done | Agent B | 2026-07-08 · keys/types/ranges/color format, mutation-verified |
 | M-3 | `/qr.svg` length + rate limit | 🔴 Not started | — | Open-proxy potential |
 | M-5 | Dependency lockfile + pip-audit | 🔴 Not started | — | |
 | L-1–3 | Security headers · endpoint exposure · script length | 🔴 Not started | — | |
@@ -259,7 +288,7 @@ Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (inten
 |---|---|---|---|
 | High | Token input UX (sessionStorage / QR) | 🔴 Not started | — |
 | High | Auto-stop broadcast on idle (`IDLE_STOP_MIN`) | ⚪ Deferred | — (risk of stopping mid-service → awaiting user decision) |
-| High | Persist mobile language choice (localStorage) | 🔴 Not started | — |
+| High | Persist mobile language choice (localStorage) | 🟢 Done | Agent B (2026-07-08) |
 | Medium | First-run onboarding (3-step mini guide) | 🔴 Not started | — |
 | Medium | Stronger WS connection-state badge | 🔴 Not started | — |
 | Medium | Mobile accessibility (font size / contrast) | 🔴 Not started | — |
@@ -331,6 +360,7 @@ Recently modified files and **cautions**. Leave a note in section 6 before touch
 |---|---|---|
 | 2026-07-08 | Claude (Agent B) | Created. Recorded security phase 1, work board, file ownership, handover notes |
 | 2026-07-08 | Claude (Agent B) | **Added interruption protocol (0.1) + Live Work Log (§8)** — closes the gap where usage limits/crashes leave no record |
+| 2026-07-08 | Claude (Agent B) | **M-2 & mobile language persistence done** (§3.4) — style whitelist + localStorage, 10 tests (49 total) |
 | 2026-07-08 | Claude (Agent B) | **H-3 & H-4 done** (§3.3) — cooldown + script/connection/message caps + 8 tests (mutation-verified), 39 passing |
 | 2026-07-08 | Claude (Agent B) | **Commit policy changed**: agents now commit/push directly (secret check required before push) |
 | 2026-07-08 | Claude (Agent B) | **Incident §3.2**: token file was committed to the public repo → untracked, gitignore fixed, token file moved outside the repo |
