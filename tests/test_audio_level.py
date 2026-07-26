@@ -140,3 +140,38 @@ def test_연결이_끊기면_운영자_목록에서도_빠진다():
     assert h.has_operator
     asyncio.run(h.unregister(ws))
     assert not h.has_operator, "끊긴 연결에 계속 전송하면 자원이 샌다"
+
+
+# ── '너무 작음' 경고 (오프라인 STT 임계값 미달) ──────────────────
+# 실제로 겪은 문제: BlackHole 컴퓨터 소리 볼륨이 낮아 게이지엔 신호가 보이는데
+# (-42dB) 오프라인 STT 임계값(-36.5dB)에 못 미쳐 전사가 전혀 안 됐다.
+# 볼륨을 100%로 올리자 전사가 시작됨 → 이 '죽은 구간'을 경고로 알린다.
+
+
+def test_임계값_바로_아래_신호는_오프라인에서_작음경고():
+    from local_backend import SILENCE_RMS
+    from ws_server import _is_too_quiet
+
+    assert _is_too_quiet(SILENCE_RMS - 0.001, online=False, silent=False) is True
+
+
+def test_임계값_이상이면_경고하지_않는다():
+    from local_backend import SILENCE_RMS
+    from ws_server import _is_too_quiet
+
+    assert _is_too_quiet(SILENCE_RMS + 0.01, online=False, silent=False) is False
+
+
+def test_온라인은_작아도_경고하지_않는다():
+    """온라인(Gemini)은 자체 게인 처리가 있어 이 임계값과 무관하다."""
+    from local_backend import SILENCE_RMS
+    from ws_server import _is_too_quiet
+
+    assert _is_too_quiet(SILENCE_RMS - 0.001, online=True, silent=False) is False
+
+
+def test_완전_무음은_작음경고가_아니다():
+    """무음(신호 없음)은 별도의 무음 경고가 우선 — 이중 경고를 막는다."""
+    from ws_server import _is_too_quiet
+
+    assert _is_too_quiet(0.0, online=False, silent=True) is False

@@ -18,7 +18,12 @@
       border-radius: 12px; padding: 16px;
     }
     .label { font-size: 12px; color: #8a93a6; margin-bottom: 8px; }
-    .source { font-size: 20px; line-height: 1.5; min-height: 2em; white-space: pre-wrap; }
+    /* 전사가 쌓여도 카드가 무한정 늘어나지 않게 상한 + 스크롤. 새 자막은 자동으로
+       하단이 보이도록 JS 가 scrollTop 을 맞춘다(최신 멘트가 항상 보임). */
+    .source {
+      font-size: 20px; line-height: 1.5; min-height: 2em; max-height: 7.5em;
+      overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap;
+    }
     .status { display: flex; gap: 16px; align-items: center; font-size: 13px; }
     .dot { width: 10px; height: 10px; border-radius: 50%; background: #d0464a; }
     .dot.on { background: #43c06a; }
@@ -52,7 +57,10 @@
     .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
     #device-msg { font-size: 12px; color: #e0a14a; }
     .slot { display: flex; gap: 8px; align-items: flex-end; }
-    .target-line { font-size: 21px; line-height: 1.5; min-height: 1.6em; white-space: pre-wrap; margin-bottom: 8px; }
+    .target-line {
+      font-size: 21px; line-height: 1.5; min-height: 1.6em; max-height: 6em;
+      overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; margin-bottom: 8px;
+    }
     .target-tag { font-size: 12px; color: #8a93a6; }
     /* 입력 레벨 게이지 — 초록(적정) → 노랑 → 빨강(과입력) */
     /* 색 눈금은 '레벨 척도'라서 막대 길이와 무관하게 고정돼야 한다.
@@ -254,6 +262,7 @@
         outputHint: '송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용',
         audioSource: "오디오 입력 소스", currentDevice: "현재 입력 장치",
         inputLevel: "입력 레벨", levelSilent: "무음",
+        tooQuiet: "⚠ 소리는 들어오지만 너무 작아 전사되지 않습니다. 출력/믹서 볼륨을 높이세요. (오프라인 모드는 작은 소리를 인식하지 못합니다)",
         silentMic: "⚠ 입력 신호가 없습니다. 마이크·믹서가 켜져 있는지, 선택한 장치가 맞는지 확인하세요.",
         silentSystemAudio: "⚠ 입력 신호가 없습니다. 컴퓨터 소리를 번역하려면 macOS [시스템 설정 → 사운드 → 출력]을 이 장치(BlackHole 등)로 바꿔야 합니다. 소리도 같이 들으려면 ‘다중 출력 장치’를 만들어 사용하세요.",
         refreshList: "🔄 목록 새로고침",
@@ -294,6 +303,7 @@
         outputHint: 'Output screen: <code>/</code> · use this URL as an OBS browser source',
         audioSource: "Audio input source", currentDevice: "Current device",
         inputLevel: "Input level", levelSilent: "silent",
+        tooQuiet: "⚠ Audio is coming in but too quiet to transcribe. Raise the output/mixer volume. (Offline mode can't pick up quiet audio)",
         silentMic: "⚠ No input signal. Check that the mic/mixer is on and that the right device is selected.",
         silentSystemAudio: "⚠ No input signal. To translate computer audio, set macOS [System Settings → Sound → Output] to this device (e.g. BlackHole). Create a Multi-Output Device if you also want to hear it.",
         refreshList: "🔄 Refresh list",
@@ -467,7 +477,7 @@
     }
     deviceSelect.onchange = () => {
       deviceMsg.textContent = "";
-      silentSince = 0;                       // 장치를 바꿨으니 무음 판정도 새로 시작
+      silentSince = 0; quietSince = 0;       // 장치를 바꿨으니 무음/작음 판정도 새로 시작
       send({ cmd: "set_device", device: parseInt(deviceSelect.value, 10) });
     };
     btnRefreshDevices.onclick = () => send({ cmd: "list_devices" });
@@ -477,8 +487,10 @@
     // (예: BlackHole 선택했지만 macOS 출력이 그쪽으로 가지 않아 무음)
     const MIN_DBFS = -60;                    // 게이지 왼쪽 끝
     const SILENT_WARN_MS = 4000;             // 이만큼 계속 무음이면 안내를 띄운다
+    const QUIET_WARN_MS = 3000;              // 신호는 있으나 STT 임계값 미달이 이만큼 지속되면 안내
     let silentSince = 0;
-    let lastSilent = null;                   // 언어 전환 시 문구를 다시 그리기 위해 보관
+    let quietSince = 0;
+    let lastWarn = null;                     // null|'none'|'silent'|'quiet' — 언어 전환 시 재그리기용
 
     function currentDeviceIsSystemAudio() {
       const idx = deviceSelect.value;
@@ -487,12 +499,18 @@
     }
 
     function renderLevelWarning() {
-      if (lastSilent === null) return;
-      if (!lastSilent) { levelWarn.hidden = true; return; }
-      levelWarn.hidden = false;
-      levelWarn.textContent = currentDeviceIsSystemAudio()
-        ? t("silentSystemAudio")
-        : t("silentMic");
+      if (lastWarn === null) return;
+      if (lastWarn === "silent") {
+        levelWarn.hidden = false;
+        levelWarn.textContent = currentDeviceIsSystemAudio()
+          ? t("silentSystemAudio")
+          : t("silentMic");
+      } else if (lastWarn === "quiet") {
+        levelWarn.hidden = false;
+        levelWarn.textContent = t("tooQuiet");
+      } else {
+        levelWarn.hidden = true;
+      }
     }
 
     function onLevel(msg) {
@@ -502,14 +520,15 @@
       levelDb.textContent = msg.silent ? t("levelSilent") : `${db.toFixed(0)} dB`;
 
       const now = Date.now();
-      if (msg.silent) {
-        if (!silentSince) silentSince = now;
-      } else {
-        silentSince = 0;
-      }
-      const silentLongEnough = !!silentSince && now - silentSince >= SILENT_WARN_MS;
-      if (silentLongEnough !== lastSilent) {
-        lastSilent = silentLongEnough;
+      // 무음(신호 없음) 과 '너무 작음'(신호는 있으나 STT 임계값 미달)을 각각 추적.
+      if (msg.silent) { if (!silentSince) silentSince = now; } else { silentSince = 0; }
+      if (msg.too_quiet) { if (!quietSince) quietSince = now; } else { quietSince = 0; }
+      const silentLong = !!silentSince && now - silentSince >= SILENT_WARN_MS;
+      const quietLong = !!quietSince && now - quietSince >= QUIET_WARN_MS;
+      // 신호 없음(silent)이 '너무 작음'보다 우선 — 더 근본적인 문제.
+      const warn = silentLong ? "silent" : (quietLong ? "quiet" : "none");
+      if (warn !== lastWarn) {
+        lastWarn = warn;
         renderLevelWarning();
       }
     }
@@ -811,9 +830,14 @@
             break;
           case "source":
             sourceEl.textContent = msg.text || "—";
+            sourceEl.scrollTop = sourceEl.scrollHeight;   // 항상 최신 멘트가 보이게
             break;
           case "subtitle":
-            if (targetEls[msg.lang]) targetEls[msg.lang].textContent = msg.text || "—";
+            if (targetEls[msg.lang]) {
+              const el = targetEls[msg.lang];
+              el.textContent = msg.text || "—";
+              el.scrollTop = el.scrollHeight;             // 항상 최신 자막이 보이게
+            }
             break;
           case "reset":
             sourceEl.textContent = "—";

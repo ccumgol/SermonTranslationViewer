@@ -4,7 +4,7 @@
 > 영문: [collaboration-report.en.md](collaboration-report.en.md)
 > 관련: [analysis-report.md](analysis-report.md) (진단·제안) · [handover.md](handover.md) (설계 배경) · [setup-guide.md](setup-guide.md) (운영)
 
-**최근 갱신**: 2026-07-08 · 갱신자: Claude (Opus 4.8) · 기준 커밋: `8a1b795` + 미커밋 작업분
+**최근 갱신**: 2026-07-26 · 갱신자: Claude (Agent C, Opus 4.8) · 기준 커밋: `978f0fb` + 미커밋 작업분
 
 ---
 
@@ -98,6 +98,7 @@ Agent 가 갑자기 멈췄을 때 사용자는 다음 한 줄만 남겨도 충�
 | **사용자 (소유자)** | 요구사항 정의·우선순위 결정, 실기기 테스트, 결제·API 키 관리, 방향 승인 | 계속 |
 | **Agent A** (분석 담당) | 코드베이스 정밀 분석 → [analysis-report.md](analysis-report.md) 작성(보안 CRITICAL 2건 등 발견) | 2026-07-07 |
 | **Agent B / Claude** (구현 담당) | 초기 전체 구현 + 문서화, 분석 결과 검증 및 **보안 1단계 하드닝** 구현 | 2026-07-08 |
+| **Agent C / Claude** (Opus 4.8) | 운영자 화면 사용성 수정: 전사영역 스크롤 + 입력볼륨 부족 경고(오프라인 STT 임계값 미달 진단) | 2026-07-26 |
 
 > 협업 방식: **Agent A 가 진단 → 사용자가 우선순위 결정 → Agent B 가 구현·검증**
 > 이 흐름이 잘 작동했습니다(분석의 CRITICAL 2건이 실제 취약점으로 재현·확인됨).
@@ -428,6 +429,39 @@ pip-audit → Found 3 known vulnerabilities in 1 package
 모두 제거해야 하며(누락 시 끊긴 소켓에 계속 전송), 자주 갱신되는 운영자 전용 정보는
 `broadcast()` 대신 `send_operators()` 를 쓸 것.
 
+### 3.11 전사/번역 영역 무한 확장 수정 + 오프라인 전사 안 됨 진단 (2026-07-26, Agent C)
+
+**문제 2 — 운영자 화면 전사/번역 영역이 무한 세로 확장(완료)**
+- 원인: 서버 `RollingTranscript` 는 16줄/1200자 tail 을 유지하나, `operator/index.html` 의
+  `.source`·`.target-line` CSS 에 `max-height`/`overflow` 가 없어 카드가 화면 밖까지 늘어남
+  → 대시보드 상단이 밀려 최신 멘트를 보려면 스크롤을 내려야 했음.
+- 수정: 두 영역에 `max-height`(source 7.5em=150px / target 6em=126px) + `overflow-y:auto`
+  + `overscroll-behavior:contain`. 새 자막 수신 시(`case "source"`/`"subtitle"`)
+  `scrollTop=scrollHeight` 로 **항상 최신이 보이도록 자동 하단 스크롤**.
+- 검증(브라우저 실측, file://): 16줄 주입 시 `maxHeight=150px, overflowY=auto,
+  isOverflowing=true, scrolledToBottom=true`. target-line 도 `maxHeight=126px` 동일 확인.
+
+**문제 1 — 오프라인 전환 후 BlackHole 전사 안 됨(원인 확정 + 관측성 경고 추가, 완료)**
+- 실측: `/health` → `backend=local, audio_device=6`(BlackHole), 스크린샷 입력레벨 **-42dB**.
+- 핵심 진단: VAD 침묵 임계값 `SILENCE_RMS=0.015` = **-36.5dBFS**. 신호 -42dB 가 이보다
+  낮아 전부 '침묵' 판정 → 발화 구간이 안 잡혀 `transcribe()` 미호출.
+- **사용자 확인으로 원인 확정**: 시스템 **볼륨을 100%로 올리자 전사가 시작됨.** 전환 버그가
+  아니라 **입력 볼륨이 STT 임계값 미달**이었음. 온라인(Gemini)은 자체 게인 처리로 작은 소리도
+  전사하지만 오프라인 STT 는 임계값 미달 신호를 통째로 버림 → "온라인은 되고 오프라인은 안 됨".
+- 전환 로직은 코드상 정상(`switch_backend`→`GeminiBackend.aclose`→`LocalBackend` 재생성→fanout
+  유지→KoreanSTT 재시작). 수정 불필요.
+- **관측성 개선(재발 방지)**: 게이지 바닥 -60dB 와 STT 임계값 -36.5dB 사이 '죽은 구간'
+  (막대는 초록인데 전사 안 됨)에 **`too_quiet` 경고 추가**. 서버가 오프라인일 때만
+  `_is_too_quiet(rms, online, silent)` 로 판정해 level 메시지에 실어 보내고, 운영자 화면은
+  3초 지속 시 "소리가 너무 작아 전사되지 않습니다. 볼륨을 높이세요"(한/영) 표시. 무음(-60dB↓)
+  경고가 우선. 3.10 의 관측가능성 철학과 동일 — "화면상 정상인데 안 되는" 상황을 없앰.
+- 검증: 서버 테스트 4개 추가(`test_audio_level.py`, 임계값 경계/온라인/무음 분기 커버, **89 passed**).
+  클라이언트 상태머신 브라우저 시뮬레이션(quiet 3초/silent 4초/우선순위/복구) 확인, 콘솔 오류 없음.
+- 파일: `server/ws_server.py`(`_is_too_quiet` + level 메시지 `too_quiet`),
+  `web/operator/index.html`(경고 상태머신 silent|quiet|none + i18n), `tests/test_audio_level.py`.
+- 미채택(현 시점 불필요): `STT_SILENCE_RMS` 하향은 노이즈 오탐 트레이드오프가 있어 보류.
+  볼륨을 올리는 운영 방식 + 경고로 충분. 반복되면 env 로 조정 가능.
+
 ## 4. 작업 보드 (Work Board)
 
 상태: 🔴 미착수 · 🟡 진행중 · 🟢 완료 · ⚪ 보류(의도적)
@@ -458,6 +492,8 @@ pip-audit → Found 3 known vulnerabilities in 1 package
 | 중간 | WS 연결 상태 배지 강화 | 🔴 미착수 | — |
 | 중간 | 모바일 접근성(글꼴·대비) | 🟢 완료 | Agent B (2026-07-08) |
 | 낮음 | 프리셋 저장 / 원문 병기 토글 | 🔴 미착수 | — |
+| 높음 | 전사/번역 영역 무한확장 → 창 크기 맞춤 스크롤 | 🟢 완료 | Agent C (2026-07-26) |
+| 높음 | 입력볼륨 부족(STT 임계값 미달) 게이지 경고 | 🟢 완료 | Agent C (2026-07-26) |
 
 ### 4.3 품질·기술부채 (analysis-report 8장)
 | 항목 | 상태 | 비고 |
@@ -523,6 +559,7 @@ pip-audit → Found 3 known vulnerabilities in 1 package
 
 | 날짜 | 갱신자 | 내용 |
 |---|---|---|
+| 2026-07-26 | Claude (Agent C) | **운영자 화면 사용성 2건 완료**(3.11) — 전사/번역 영역 무한확장→스크롤, 오프라인 입력볼륨 부족 `too_quiet` 경고(원인=STT 임계값 미달, 볼륨100%로 확정). 테스트 4개 추가(89 passed) |
 | 2026-07-08 | Claude (Agent B) | 문서 생성. 보안 1단계 완료 반영, 작업 보드·점유 현황·인계 메모 정리 |
 | 2026-07-08 | Claude (Agent B) | **중단 대응 규칙(0.1) + 진행 중 작업 로그(8장) 추가** — 사용량 만료·크래시로 기록이 남지 않는 공백 해결 |
 | 2026-07-08 | Claude (Agent B) | **진짜 원인 해결(3.8)**: 자동 토큰이 재시작마다 바뀌어 인증 실패 → 토큰 파일 저장·재사용, 인증 실패 배너 |
@@ -545,7 +582,7 @@ pip-audit → Found 3 known vulnerabilities in 1 package
 
 ### 현재 진행 중
 ```
-(없음 — 진행 중인 작업이 없습니다)
+(없음 — 진행 중인 작업이 없습니다. 2026-07-26 문제1·2 완료, 3.11 참고)
 ```
 
 ### 작성 예시 (복사해서 쓰세요)

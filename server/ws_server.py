@@ -48,6 +48,7 @@ from audio_input import (
 from config import Settings
 from languages import LANGUAGES, VALID_CODES
 from live_session import TranscriptEvent
+from local_backend import SILENCE_RMS as STT_SILENCE_RMS
 from local_backend import LocalBackend
 from sermon_script import ScriptCorrector
 from subtitle_engine import RollingTranscript, SubtitleEngine
@@ -514,6 +515,16 @@ async def pipeline(settings: Settings) -> None:
             await fanout.stop()
 
 
+def _is_too_quiet(rms: float, *, online: bool, silent: bool) -> bool:
+    """게이지엔 신호가 보이지만(silent 아님) 오프라인 STT 의 침묵 임계값
+    (STT_SILENCE_RMS)에 못 미쳐 전사되지 않는 낮은 입력인지 판정한다.
+
+    온라인(Gemini)은 자체 게인/노이즈 처리가 있어 이 임계값과 무관하므로
+    오프라인일 때만 참이 된다. (예: BlackHole 컴퓨터 소리 볼륨이 낮을 때)
+    """
+    return (not online) and (not silent) and (rms < STT_SILENCE_RMS)
+
+
 async def _level_heartbeat() -> None:
     """입력 레벨을 운영자 화면에 주기적으로 push (게이지용).
 
@@ -529,12 +540,17 @@ async def _level_heartbeat() -> None:
             rms = state.capture.pop_level()
         except Exception:  # noqa: BLE001
             continue
+        dbfs = rms_to_dbfs(rms)
+        silent = dbfs <= SILENCE_DBFS
+        online = state.backend is not None and state.backend.name == "gemini"
+        too_quiet = _is_too_quiet(rms, online=online, silent=silent)
         await hub.send_operators(
             {
                 "type": "level",
                 "rms": round(rms, 5),
-                "dbfs": round(rms_to_dbfs(rms), 1),
-                "silent": rms_to_dbfs(rms) <= SILENCE_DBFS,
+                "dbfs": round(dbfs, 1),
+                "silent": silent,
+                "too_quiet": too_quiet,
             }
         )
 
