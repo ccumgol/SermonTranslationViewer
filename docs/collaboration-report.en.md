@@ -110,9 +110,9 @@ If an agent stops abruptly, one line from the user is enough:
 | Area | State |
 |---|---|
 | Features | **Production-usable**: online/offline dual track, 1–3 languages, mobile subtitles & QR, script correction |
-| Tests | **31 passing** — 20 unit (pure logic) + 11 WS/auth integration (security regression guard) |
+| Tests | **39 passing** — 20 unit + 11 WS/auth + 8 abuse-limit |
 | Docs | README · setup-guide · troubleshooting · handover · analysis (KO/EN) |
-| Security | **Phase 1 hardening done** (C-1, C-2, H-1). H-2–H-4 and M/L items not started |
+| Security | **Phases 1–2 done** (C-1, C-2, H-1 / H-3, H-4). H-2 and M/L not started |
 | Deployment | LAN-only assumption. `main` is stable; features go on branches then merge |
 
 ---
@@ -211,6 +211,30 @@ Added **regression tests** now that security logic has landed.
 
 ---
 
+### 3.3 Abuse limits H-3 / H-4 (2026-07-08, Agent B)
+
+Thresholds applied after user approval.
+
+| Item | Value | Behavior |
+|---|---|---|
+| Command cooldown | **2s** (set_backend **10s**) | Broadcasts `command_throttled`, ignores the command |
+| Cooldown scope | set_languages·set_backend·set_broadcast·set_device·set_script | Harmless ones (reset, list_devices) excluded |
+| Max script | **100,000 chars** | Truncated + `script_truncated` notice |
+| Max connections | **100** | New connections closed with `4429` |
+| Max message | **512KB** | uvicorn `ws_max_size` (both entrypoints) |
+
+- All tunable via env (`COMMAND_COOLDOWN_SEC`, etc. — see `.env.example`).
+- Operator UI shows throttle/truncate notices (KO/EN).
+- Tests: `tests/test_ws_limits.py` (8). **Mutation-verified**: disabling the cooldown,
+  script cap, or connection cap each caused exactly 1 failure. Total **39 passed**.
+- Real-server check: spamming a command gives `script_state → command_throttled(retry_after=2.0)`.
+
+**Testing pitfall (hit for real)**: waiting on `receive_json()` after a command that may send
+no response (`set_device` returns silently when `state.capture is None`) makes the test **hang
+forever**. Use a command that always responds, or assert on **server state/results** instead.
+
+---
+
 ## 4. Work Board
 
 Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (intentional)
@@ -222,8 +246,8 @@ Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (inten
 | C-2 | Token auto-gen / enforced auth | 🟢 Done | Agent B | Auto-generation approach |
 | H-1 | Constant-time compare + failure limit | 🟢 Done | Agent B | Close after 5 failures |
 | H-2 | Token in URL → HTTPS/WSS · sessionStorage | 🔴 Not started | — | Pair with UX 7.1 |
-| H-3 | Rate limit on operator commands | 🔴 Not started | — | Prevent `set_backend`/`set_languages` spam |
-| H-4 | WS message size / connection caps | 🔴 Not started | — | Includes script length cap |
+| H-3 | Rate limit on operator commands | 🟢 Done | Agent B | 2026-07-08 · 2s (backend 10s), mutation-verified |
+| H-4 | WS message size / connection caps | 🟢 Done | Agent B | 2026-07-08 · script 100k chars · 100 conns · 512KB msg |
 | M-1 | Send internal info in `init` only after auth | 🔴 Not started | — | Device names etc. |
 | M-2 | Whitelist-validate `set_style` | 🔴 Not started | — | Pydantic |
 | M-3 | `/qr.svg` length + rate limit | 🔴 Not started | — | Open-proxy potential |
@@ -279,8 +303,7 @@ Recently modified files and **cautions**. Leave a note in section 6 before touch
 ### Good next tasks (recommended order)
 1. ~~WS/auth integration tests~~ → **Done** (2026-07-08). Reuse the `client` fixture
    (mocked `pipeline`) in `tests/test_ws_security.py` for new tests.
-2. **H-3 / H-4** — command cooldown, WS size/connection caps, script length cap. These change
-   behavior, so agree thresholds with the user first. **Good time now that tests exist.**
+2. ~~H-3 / H-4~~ → **Done** (2026-07-08). All caps tunable via env.
 3. **Token UX (H-2 + 7.1)** — store the token in `sessionStorage` with a one-time input UI.
    Not urgent right now because `start.sh` already opens the tokenized URL.
 4. **M-2 whitelist-validate `set_style`** — fairly independent, low conflict risk, easy to test.
@@ -308,6 +331,7 @@ Recently modified files and **cautions**. Leave a note in section 6 before touch
 |---|---|---|
 | 2026-07-08 | Claude (Agent B) | Created. Recorded security phase 1, work board, file ownership, handover notes |
 | 2026-07-08 | Claude (Agent B) | **Added interruption protocol (0.1) + Live Work Log (§8)** — closes the gap where usage limits/crashes leave no record |
+| 2026-07-08 | Claude (Agent B) | **H-3 & H-4 done** (§3.3) — cooldown + script/connection/message caps + 8 tests (mutation-verified), 39 passing |
 | 2026-07-08 | Claude (Agent B) | **Commit policy changed**: agents now commit/push directly (secret check required before push) |
 | 2026-07-08 | Claude (Agent B) | **Incident §3.2**: token file was committed to the public repo → untracked, gitignore fixed, token file moved outside the repo |
 | 2026-07-08 | Claude (Agent B) | **Added 11 WS/auth integration tests** (§3.1) — mutation-tested. 31 total passing. Updated §2, board 4.3, handover notes |
