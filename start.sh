@@ -37,15 +37,25 @@ echo "   셀폰 자막:   http://(이PC의IP):${PORT}/m"
 echo "   (종료: Ctrl+C)"
 echo
 
+# 이전 실행의 URL 파일을 지워, 새 토큰이 기록될 때까지 기다리게 한다
+URL_FILE="data/runtime/operator_url.txt"
+rm -f "${URL_FILE}"
+
 # 서버가 뜨면 운영자 화면을 자동으로 연다 (OPEN_BROWSER=0 이면 끔)
+# 운영자 토큰이 자동 생성되므로, 서버가 남긴 URL(토큰 포함)을 읽어서 연다.
 if [ "${OPEN_BROWSER:-1}" != "0" ]; then
   (
     for _ in $(seq 1 40); do
       if curl -s -o /dev/null "http://localhost:${PORT}/health"; then break; fi
       sleep 0.5
     done
-    if command -v open >/dev/null 2>&1; then open "${OP_URL}"          # macOS
-    elif command -v xdg-open >/dev/null 2>&1; then xdg-open "${OP_URL}"  # Linux
+    for _ in $(seq 1 10); do
+      [ -f "${URL_FILE}" ] && break
+      sleep 0.3
+    done
+    TARGET="$(cat "${URL_FILE}" 2>/dev/null || echo "${OP_URL}")"
+    if command -v open >/dev/null 2>&1; then open "${TARGET}"          # macOS
+    elif command -v xdg-open >/dev/null 2>&1; then xdg-open "${TARGET}"  # Linux
     fi
   ) &
 fi
