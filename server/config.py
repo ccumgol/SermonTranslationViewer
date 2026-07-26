@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import tempfile
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+log = logging.getLogger("config")
 
 # 프로젝트 루트의 .env 를 로드
 load_dotenv()
@@ -125,7 +128,7 @@ def _load_or_create_token() -> tuple[str, bool]:
         _TOKEN_FILE.write_text(token, encoding="utf-8")
         _TOKEN_FILE.chmod(0o600)
     except Exception as exc:  # noqa: BLE001
-        print(f"[config] 토큰 저장 실패(이번 실행에만 유효): {exc}")
+        log.warning("토큰 저장 실패(이번 실행에만 유효): %s", exc)
     return token, False
 
 

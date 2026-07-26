@@ -511,6 +511,30 @@ address already in use` 로 조용히 실패(세 번 연속 실패 로그 확인
   start.sh 포트 선점검이 정확히 이 문제를 해결한다. 운영 시 **서버를 띄운 터미널을 열어두고
   종료 때 그 창에서 `Ctrl+C`** 로 끝내면 고아화를 막을 수 있다.
 
+### 3.13 코드 품질 1단계: print → logging 전환 (2026-07-26, Agent C)
+
+사용자 선택(코드 품질 / LAN 전용→H-2 보류)에 따라 **순수 리팩터링**(기능 변화 0)으로 진행.
+2단계 중 **1단계 완료**.
+
+**변경**:
+- 신규 `server/logging_setup.py`: `setup_logging()` — 루트 로거 1회 설정(중복 무시),
+  포맷 `%(asctime)s %(levelname)-7s [%(name)s] %(message)s`, `LOG_LEVEL` env 로 조정.
+- 각 모듈이 `logging.getLogger("server"/"local"/"live"/"audio"/"config"/"transcript")` 사용.
+  기존 `[server]` 등 태그는 **로거 이름**이 대신한다.
+- `print(...)` → `log.info/warning`(레벨 구분): 운영 정보=info, 실패·⚠경고=warning.
+  총 **34개 전환**(ws_server 18·local 7·audio 2·live 4·config 1·transcript 1·원고상한 1).
+- **의도적으로 print 유지**: ① 서버 시작 시 **운영자 토큰 URL 배너**(사용자 대면 안내)
+  ② `audio_input.py` 의 CLI 진단 도구(`--list`/`--monitor`) 출력.
+- 진입점(`__main__.py`·`ws_server.py __main__`)과 `lifespan` 에서 `setup_logging()` 호출
+  (어떤 실행 경로든 로깅 보장). `audio_input` 의 미사용 `import sys` 제거.
+
+**검증**:
+- 실제 출력 확인: `18:10:09 INFO [server] 파이프라인 시작 …` 형식 정상.
+  `LOG_LEVEL=WARNING` 시 info 억제·warning만 출력 확인(레벨 필터 동작).
+- `py_compile` OK, **92 passed**(기능 회귀 없음), 남은 print 는 위 의도분만 잔존.
+
+**다음(2단계)**: `ws_server.py`(1000줄+) 모듈 분리 — 별도 진행(회귀 위험 커서 신중히).
+
 ## 4. 작업 보드 (Work Board)
 
 상태: 🔴 미착수 · 🟡 진행중 · 🟢 완료 · ⚪ 보류(의도적)
@@ -551,7 +575,7 @@ address already in use` 로 조용히 실패(세 번 연속 실패 로그 확인
 |---|---|---|
 | WS/인증 **통합 테스트** | 🟢 완료 | Agent B, 2026-07-08 · `tests/test_ws_security.py` 11개. **뮤테이션 테스트로 실효성 검증**(보안 코드 무력화 시 실패 확인) |
 | `ws_server.py` 모듈 분리(689줄) | 🔴 미착수 | 인증/명령/라우팅 |
-| `print` → `logging` 전환 | 🔴 미착수 | |
+| `print` → `logging` 전환 | 🟢 완료 | Agent C (2026-07-26) · logging_setup + 34개 전환, LOG_LEVEL env, 92 passed |
 | preview SDK 필드 방어적 처리 | 🔴 미착수 | 세션 재개 회귀 위험 |
 
 ### 4.4 기능 개선 (handover 9장)
@@ -610,6 +634,7 @@ address already in use` 로 조용히 실패(세 번 연속 실패 로그 확인
 
 | 날짜 | 갱신자 | 내용 |
 |---|---|---|
+| 2026-07-26 | Claude (Agent C) | **코드 품질 1단계**(3.13) — print→logging 전환(logging_setup, 34개, LOG_LEVEL env). 토큰배너·CLI 출력은 print 유지. 92 passed. 2단계(모듈분리) 대기 |
 | 2026-07-26 | Claude (Agent C) | **오류보고서(troubleshooting-log) 4건 추가**(한/영) — 4-3 고아서버 포트충돌, 4-4 토큰 재사용 오해, 5-4 전사영역 무한확장, 6-7 오프라인 볼륨부족(게이지↔STT 임계값 사각지대) |
 | 2026-07-26 | Claude (Agent C) | **부가 진단**(3.12) — 유령(고아 PPID=1) 서버가 8000 을 선점해 반복 충돌한 것이 근본 원인임을 실측 규명. 탭 닫기≠서버종료, 현재 서버 11:10 기동·`ws_server.py` 직접 실행 등. (문서만 갱신) |
 | 2026-07-26 | Claude (Agent C) | **포트충돌 방지·토큰 메시지 완료**(3.12) — start.sh 선점검(물어보고 종료), 토큰 안내 재사용/신규 구분. 토큰 재사용 테스트 3개(92 passed). 재사용 로직은 정상이었고 메시지가 오해의 근원이었음을 실측 확인 |
@@ -636,7 +661,11 @@ address already in use` 로 조용히 실패(세 번 연속 실패 로그 확인
 
 ### 현재 진행 중
 ```
-(없음 — 진행 중인 작업이 없습니다. 2026-07-26 오류보고서 4건 추가 완료)
+- [진행 2026-07-26 / Agent C] 코드 품질 개선 — 1단계(logging) 완료·커밋, 2단계 대기
+  ✅ 1단계 print→logging: logging_setup + 34개 전환, 92 passed (3.13 참고)
+  ⏳ 2단계 ws_server.py(1000줄+) 모듈 분리: 회귀 위험 커서 사용자 확인 후 신중 진행 예정.
+     분리안: hub.py / app_state.py / validation.py / orchestration.py / commands.py
+     (기존 from ws_server import ... 는 re-export 로 호환 유지 → 테스트 안 깨짐)
 ```
 
 ### 작성 예시 (복사해서 쓰세요)

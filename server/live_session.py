@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import AsyncIterator, Callable
 
@@ -26,6 +27,8 @@ from google import genai
 from google.genai import types
 
 from config import Settings
+
+log = logging.getLogger("live")
 
 
 @dataclass(frozen=True)
@@ -73,7 +76,7 @@ class LiveTranslateSession:
         # 언어가 바뀌면 이전 세션 이어받기는 무효 → 새 세션으로 시작
         self._resumption_handle = None
         self._restart_event.set()
-        print(f"[live] 목표 언어 변경 → {code} (세션 재시작)")
+        log.info("목표 언어 변경 → %s (세션 재시작)", code)
 
     def _build_config(self) -> types.LiveConnectConfig:
         """세션 setup 설정. 보관 중인 핸들이 있으면 이어받기로 연결."""
@@ -109,7 +112,7 @@ class LiveTranslateSession:
                 await self._run_one_session(audio_source, on_event)
             except Exception as exc:  # noqa: BLE001
                 # 네트워크/세션 오류는 삼키지 않고 알린 뒤 잠깐 대기 후 재시도.
-                print(f"[live] 세션 오류, 2초 후 재연결: {exc}")
+                log.warning("세션 오류, 2초 후 재연결: %s", exc)
                 await asyncio.sleep(2.0)
 
     async def _run_one_session(
@@ -121,7 +124,7 @@ class LiveTranslateSession:
         async with self._client.aio.live.connect(
             model=self._settings.model, config=config
         ) as session:
-            print("[live] 세션 연결됨")
+            log.info("세션 연결됨")
 
             # 송신(오디오) / 수신(전사) 을 동시에 처리하며,
             # 언어 변경(restart) 신호가 오면 즉시 세션을 끊고 재시작한다.
@@ -156,7 +159,7 @@ class LiveTranslateSession:
                 raise recv_error
             if self._restart_event.is_set():
                 self._restart_event.clear()
-                print("[live] 언어 변경으로 세션 재시작")
+                log.info("언어 변경으로 세션 재시작")
             return
 
     async def _send_audio(self, session, audio_source: AudioSource) -> None:

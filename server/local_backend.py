@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 
@@ -22,6 +23,8 @@ import numpy as np
 
 from audio_input import AudioFanout
 from live_session import TranscriptEvent
+
+log = logging.getLogger("local")
 
 # Ollama 로컬 서버 (기본 포트)
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -116,11 +119,11 @@ class KoreanSTT:
         import mlx_qwen3_asr as asr
 
         loop = asyncio.get_running_loop()
-        print(f"[local] Qwen3-ASR 모델 로딩… ({STT_MODEL})")
+        log.info("Qwen3-ASR 모델 로딩… (%s)", STT_MODEL)
         session = await loop.run_in_executor(
             self._executor, asr.Session, STT_MODEL
         )
-        print("[local] STT 준비 완료 — 발화 구간 단위 전사 시작")
+        log.info("STT 준비 완료 — 발화 구간 단위 전사 시작")
 
         queue = self._fanout.subscribe()
         seg: list[np.ndarray] = []   # 현재 발화 구간 버퍼
@@ -145,7 +148,7 @@ class KoreanSTT:
                     lambda: session.transcribe(audio, language="ko"),
                 )
             except Exception as exc:  # noqa: BLE001
-                print(f"[local] 전사 실패: {exc}")
+                log.warning("전사 실패: %s", exc)
                 return
             text = (getattr(result, "text", "") or "").strip()
             # 문장 중간 강제 분할이면 끝의 마침표류를 떼어 다음 조각과 자연스럽게 이어지게
@@ -291,7 +294,7 @@ class LocalSession:
                     term_hint=self._glossary.hint_for(sentence),
                 )
             except Exception as exc:  # noqa: BLE001
-                print(f"[local] 번역 실패({self._code}): {exc}")
+                log.warning("번역 실패(%s): %s", self._code, exc)
                 continue
             self._prev_korean = sentence  # 다음 문장의 문맥으로
             if translated and self._on_event is not None:
@@ -322,9 +325,10 @@ class LocalBackend:
     ) -> None:
         self._glossary = Glossary.load()  # data/glossary/glossary.txt (있으면)
         if not self._glossary.is_empty:
-            print(
-                f"[local] 용어집 로드: 치환 {len(self._glossary.corrections)}개 / "
-                f"용어 {len(self._glossary.terms)}개"
+            log.info(
+                "용어집 로드: 치환 %d개 / 용어 %d개",
+                len(self._glossary.corrections),
+                len(self._glossary.terms),
             )
         self._stt = KoreanSTT(fanout, loop, glossary=self._glossary, script=script)
         # 번역 모델을 미리 메모리에 올려둔다(첫 문장 콜드 로딩 지연 방지)
@@ -333,11 +337,11 @@ class LocalBackend:
     async def _warmup(self) -> None:
         try:
             await translate("주님께 영광을 돌립니다", "en")
-            print(f"[local] 번역 모델 예열 완료 ({MT_MODEL})")
+            log.info("번역 모델 예열 완료 (%s)", MT_MODEL)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            print(f"[local] 번역 모델 예열 실패(무시): {exc}")
+            log.warning("번역 모델 예열 실패(무시): %s", exc)
 
     def make_session(self, target_language: str) -> LocalSession:
         return LocalSession(self._stt, target_language, glossary=self._glossary)

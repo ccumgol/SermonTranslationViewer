@@ -12,9 +12,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 import uvicorn  # noqa: E402
 
 from config import Settings  # noqa: E402
+from logging_setup import setup_logging  # noqa: E402
 from ws_server import WS_MAX_MESSAGE_BYTES  # noqa: E402
 
 if __name__ == "__main__":
+    setup_logging()
     cfg = Settings.load()
     uvicorn.run(
         "ws_server:app",

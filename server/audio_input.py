@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import math
-import sys
 
 import numpy as np
 import sounddevice as sd
@@ -25,6 +25,8 @@ from config import (
     INPUT_DTYPE,
     INPUT_SAMPLE_RATE,
 )
+
+log = logging.getLogger("audio")
 
 
 # 16-bit PCM 최대 진폭 — RMS 를 0.0~1.0 로 정규화할 때 쓴다.
@@ -64,7 +66,7 @@ class AudioCapture:
     def _callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         if status:
             # 오버플로우/언더런 등은 무시하지 않고 표준에러로 알린다.
-            print(f"[audio] 입력 상태 경고: {status}", file=sys.stderr)
+            log.warning("입력 상태 경고: %s", status)
         self._track_level(indata)
         # indata: int16 mono → 그대로 PCM 바이트로 변환
         pcm_bytes = bytes(indata)
@@ -148,7 +150,7 @@ class AudioCapture:
         """입력 스트림만 교체. 큐(=하류 소비자)는 유지되어 세션이 끊기지 않는다."""
         self._close_stream()
         self._open_stream(device)
-        print(f"[audio] 입력 장치 전환 → {device}")
+        log.info("입력 장치 전환 → %s", device)
 
     @property
     def current_device(self) -> str | int | None:

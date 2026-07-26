@@ -12,9 +12,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger("transcript")
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "data" / "logs"
 
@@ -54,7 +57,7 @@ class TranscriptLogger:
             with self.text_path.open("a", encoding="utf-8") as f:
                 f.write(f"[{stamp}] ({label}) {text}\n")
         except Exception as exc:  # noqa: BLE001
-            print(f"[log] 기록 실패(무시): {exc}")
+            log.warning("기록 실패(무시): %s", exc)
 
     @property
     def path(self) -> Path:
