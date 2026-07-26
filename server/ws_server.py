@@ -25,6 +25,7 @@ import asyncio
 import hmac
 import json
 import os
+import re
 import socket
 import tempfile
 import time
@@ -73,6 +74,8 @@ _COOLDOWN_COMMANDS = {
 }
 # 설교 원고 최대 길이(자). 일반 설교 원고는 1~2만 자 수준.
 MAX_SCRIPT_CHARS = int(os.getenv("MAX_SCRIPT_CHARS", "100000"))
+# 색상 형식(#RGB / #RRGGBB) — 임의 문자열이 스타일 상태에 들어가는 것을 막는다
+_HEX_COLOR_RE = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
 # 동시 WebSocket 연결 상한(교인 폰 다수 접속 고려)
 MAX_WS_CLIENTS = int(os.getenv("MAX_WS_CLIENTS", "100"))
 # WebSocket 메시지 크기 상한(바이트) — 원고 10만 자(UTF-8 최대 3바이트) + 여유
@@ -262,6 +265,46 @@ class AppState:
 state = AppState()
 
 
+def _is_hex_color(value: object) -> bool:
+    """#RGB / #RRGGBB 형식인지 검사 (임의 길이 문자열이 상태에 들어가는 것을 막는다)."""
+    return (
+        isinstance(value, str)
+        and _HEX_COLOR_RE.fullmatch(value) is not None
+    )
+
+
+def _sanitize_style(raw: object) -> dict:
+    """set_style 입력을 화이트리스트로 검증 (M-2).
+
+    기존에는 임의 키를 그대로 상태에 병합하고 색상 길이도 무제한이어서,
+    쓰레기 값이 모든 클라이언트로 전파될 수 있었다. 허용된 키·타입·범위만 통과시킨다.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+
+    size = raw.get("fontSize")
+    if isinstance(size, (int, float)) and not isinstance(size, bool):
+        out["fontSize"] = min(max(float(size), 1.0), 20.0)
+
+    pad = raw.get("padding")
+    if isinstance(pad, (int, float)) and not isinstance(pad, bool):
+        out["padding"] = min(max(float(pad), 0.0), 30.0)
+
+    if _is_hex_color(raw.get("bgColor")):
+        out["bgColor"] = raw["bgColor"]
+
+    region = raw.get("region")
+    if region in ("full", "bottom", "top"):
+        out["region"] = region
+
+    lines = raw.get("maxLines")
+    if isinstance(lines, int) and not isinstance(lines, bool):
+        out["maxLines"] = min(max(lines, 0), 10)
+
+    return out
+
+
 def _sanitize_languages(raw: object) -> list[dict]:
     """입력 언어 목록을 검증·정리. 최대 3개, 코드 중복 제거, 색 기본값 보정."""
     cleaned: list[dict] = []
@@ -274,7 +317,7 @@ def _sanitize_languages(raw: object) -> list[dict]:
             if code not in VALID_CODES or code in seen:
                 continue
             color = entry.get("color")
-            if not isinstance(color, str) or not color.startswith("#"):
+            if not _is_hex_color(color):
                 color = DEFAULT_COLORS[len(cleaned) % len(DEFAULT_COLORS)]
             cleaned.append({"code": code, "color": color})
             seen.add(code)
@@ -647,8 +690,9 @@ async def _handle_command(cmd: dict) -> None:
         state.output_enabled = bool(cmd.get("enabled", True))
         await hub.broadcast({"type": "output_state", "enabled": state.output_enabled})
     elif name == "set_style":
-        incoming = cmd.get("style", {})
-        if isinstance(incoming, dict):
+        # 화이트리스트 검증(M-2): 허용된 키·타입·범위만 반영한다.
+        incoming = _sanitize_style(cmd.get("style"))
+        if incoming:
             state.style = {**state.style, **incoming}
             await hub.broadcast({"type": "style", "style": state.style})
     elif name == "set_languages":
