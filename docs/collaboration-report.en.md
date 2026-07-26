@@ -110,7 +110,7 @@ If an agent stops abruptly, one line from the user is enough:
 | Area | State |
 |---|---|
 | Features | **Production-usable**: online/offline dual track, 1–3 languages, mobile subtitles & QR, script correction |
-| Tests | **67 passing** — 20 unit + 11 WS/auth + 8 abuse-limit + 10 style + 11 info-exposure + 7 VAD-join |
+| Tests | **72 passing** — 20 unit + 11 WS/auth + 8 abuse-limit + 10 style + 16 info-exposure + 7 VAD-join |
 | Docs | README · setup-guide · troubleshooting · handover · analysis (KO/EN) |
 | Security | **C-1·C-2·H-1·H-3·H-4·M-1·M-2·M-3·M-5·L-1 done**. Remaining: H-2 (HTTPS/WSS) — only needed if exposed publicly |
 | Deployment | LAN-only assumption. `main` is stable; features go on branches then merge |
@@ -333,6 +333,31 @@ backend failed to start. Fixed by setting `.env` to the device **name**
 
 ---
 
+### 3.7 ⚠️ Regression: cached screens made features look missing (2026-07-08, fixed)
+
+**Symptom**: on the operator screen the **audio device could not be selected** and the
+**online/offline backend toggle was gone** (badge showed `…` with an "operator token required" warning).
+
+**Root cause**
+1. The server was fine — verified directly over WebSocket: `operator_init` (devices=6) arrived.
+2. The served HTML was fine — it contained the `operator_init` handler.
+3. **No `Cache-Control` header.** FastAPI's `FileResponse` sets `ETag`/`Last-Modified`, so the
+   browser **reused the old JS via 304**. The old JS had no `operator_init` handler, so the
+   device list and backend badge never got filled.
+   → The M-1 (init split) change regressed **only on cached pages**.
+
+**Fix**
+- HTML screens (`/`, `/operator`, `/m`, `/qr-view`) now send
+  `Cache-Control: no-store, must-revalidate` and drop `ETag`/`Last-Modified`.
+- QR/icons still cacheable (avoid needless re-downloads).
+- Implementation pitfall: Starlette's `MutableHeaders` has **no `pop()`** → caused a 500; use `del`.
+- Added 5 tests (`test_info_exposure.py`): no-store + validator removal on 4 screens, QR cacheable.
+
+**Lesson**: if a frontend change makes features "disappear", **suspect caching first** and check
+headers with `curl -sI`. Fixing it **server-side** beats asking users to hard-refresh.
+
+---
+
 ## 4. Work Board
 
 Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (intentional)
@@ -430,6 +455,7 @@ Recently modified files and **cautions**. Leave a note in section 6 before touch
 |---|---|---|
 | 2026-07-08 | Claude (Agent B) | Created. Recorded security phase 1, work board, file ownership, handover notes |
 | 2026-07-08 | Claude (Agent B) | **Added interruption protocol (0.1) + Live Work Log (§8)** — closes the gap where usage limits/crashes leave no record |
+| 2026-07-08 | Claude (Agent B) | **Regression fix (§3.7)**: cached HTML hid device select & backend toggle → no-store, 5 tests (72 total) |
 | 2026-07-08 | Claude (Agent B) | **M-5 · mobile accessibility · VAD re-assembly done** (§3.6) — 3 pyasn1 CVEs fixed, lockfile, a11y UI, sentence joining + 7 tests (67 total) |
 | 2026-07-08 | Claude (Agent B) | **M-1·M-3·L-1 done** (§3.5) — init split, QR cap, security headers, 11 tests (60 total) |
 | 2026-07-08 | Claude (Agent B) | **M-2 & mobile language persistence done** (§3.4) — style whitelist + localStorage, 10 tests (49 total) |

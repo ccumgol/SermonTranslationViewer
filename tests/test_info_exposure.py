@@ -108,3 +108,26 @@ def test_보안_헤더가_설정된다(client, path):
     assert r.headers.get("X-Content-Type-Options") == "nosniff"
     # 토큰이 담긴 URL 이 외부로 새지 않도록
     assert r.headers.get("Referrer-Policy") == "no-referrer"
+
+
+# ── 화면 HTML 캐시 방지 (실제로 겪은 회귀) ─────────────────────
+
+
+@pytest.mark.parametrize("path", ["/", "/operator", "/m", "/qr-view"])
+def test_화면_HTML_은_캐시되지_않는다(client, path):
+    """캐시되면 코드를 고쳐도 브라우저가 옛 화면을 재사용해 '기능이 사라진 것처럼'
+    보인다(실제 발생: operator_init 핸들러가 없는 옛 JS 가 재사용되어 장치 목록·
+    백엔드 배지가 비어 있었음)."""
+    r = client.get(path)
+    assert r.status_code == 200
+    assert "no-store" in r.headers.get("Cache-Control", "")
+    # 조건부 요청으로 304 를 받지 않도록 검증자를 제거해야 한다
+    assert "etag" not in {k.lower() for k in r.headers}
+    assert "last-modified" not in {k.lower() for k in r.headers}
+
+
+def test_QR_은_캐시를_허용한다(client):
+    """자막 화면과 달리 QR 이미지는 자주 바뀌지 않아 캐시해도 된다."""
+    r = client.get("/qr.svg", params={"text": "http://192.168.0.10:8000/m"})
+    assert r.status_code == 200
+    assert "no-store" not in r.headers.get("Cache-Control", "")

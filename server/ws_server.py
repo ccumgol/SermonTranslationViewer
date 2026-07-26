@@ -553,6 +553,14 @@ async def _security_headers(request, call_next):  # noqa: ANN001, ANN201
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
+    # 화면(HTML)은 캐시하지 않는다. 캐시되면 코드를 고쳐도 브라우저가 옛 화면을
+    # 재사용해 "기능이 사라진 것처럼" 보인다(실제로 발생). QR/아이콘은 캐시 허용.
+    if request.url.path in ("/", "/operator", "/m", "/qr-view"):
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        # Starlette 의 MutableHeaders 는 pop() 이 없어 del 로 제거한다.
+        for h in ("etag", "last-modified"):
+            if h in response.headers:
+                del response.headers[h]
     return response
 
 
