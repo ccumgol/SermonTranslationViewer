@@ -49,6 +49,11 @@ MIN_SPEECH_SEC = 0.3
 # 낮추면 자막이 더 자주·빨리 뜨지만 문장 중간에서 끊길 수 있다(번역 품질 ↔ 반응성).
 MAX_SEGMENT_SEC = float(os.getenv("STT_MAX_SEGMENT_SEC", "8.0"))
 _CHUNK_SEC = 0.1  # fanout 청크 = 100ms
+# 강제 분할(문장 중간)로 잘린 조각을 몇 개까지 모아 한 번에 번역할지(0=재조합 안 함).
+# 문맥이 이어져 번역 품질이 좋아지지만, 그만큼 자막이 늦게 나온다.
+MAX_JOIN_SEGMENTS = int(os.getenv("STT_MAX_JOIN_SEGMENTS", "2"))
+# 문장이 끝났다고 볼 구두점
+_SENTENCE_ENDINGS = ".。!?！？…"
 
 # 번역 프롬프트에 쓸 언어 이름은 languages.py 단일 출처 사용
 from glossary import Glossary  # noqa: E402
@@ -77,6 +82,8 @@ class KoreanSTT:
         self._glossary = glossary or Glossary()
         self._subscribers: set = set()
         self._task: asyncio.Task | None = None
+        # 강제 분할로 잘린 조각을 문장이 끝날 때까지 모아 두는 버퍼(재조합용)
+        self._pending: list[str] = []
         # STT 블로킹 추론은 전용 스레드풀에서 (종료 시 기본 풀과의 race 방지)
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stt")
 
@@ -147,9 +154,30 @@ class KoreanSTT:
             if self._script is not None:
                 text = self._script.correct(text)   # 원고 기반 발음 유사도 교정
             text = self._glossary.correct(text)     # 용어집 후처리 치환(정확 규칙)
-            if text:
-                self._publish("delta", text + " ")  # 한국어 화면 표시
-                self._publish("sentence", text)     # 번역 대상
+            if not text:
+                return
+
+            # 화면(한국어)에는 조각이 나오는 대로 즉시 보여준다(반응성 유지)
+            self._publish("delta", text + " ")
+
+            # ── 문장 재조합: 문장 중간에 잘린 조각은 다음 조각과 합쳐 번역한다 ──
+            # 조각 단위로 번역하면 문맥이 끊겨 오역이 생기므로(예: 주어/목적어 뒤바뀜),
+            # 문장이 끝날 때까지 모아 한 번에 번역한다. 단 아래 조건에서 즉시 내보내
+            # 자막이 과도하게 늦어지지 않게 한다.
+            #   · 문장 끝 구두점으로 끝났다
+            #   · 침묵으로 끊긴 구간이다(forced=False → 문장이 끝났을 가능성 높음)
+            #   · 모은 조각이 MAX_JOIN_SEGMENTS 에 도달했다
+            self._pending.append(text)
+            joined = " ".join(self._pending)
+            ends_sentence = joined.rstrip().endswith(tuple(_SENTENCE_ENDINGS))
+            if (
+                MAX_JOIN_SEGMENTS <= 0
+                or not forced
+                or ends_sentence
+                or len(self._pending) >= MAX_JOIN_SEGMENTS
+            ):
+                self._pending.clear()
+                self._publish("sentence", joined)   # 번역 대상(문맥이 이어진 문장)
 
         try:
             while True:
