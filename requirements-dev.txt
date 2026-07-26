@@ -1,1 +1,7 @@
+# 개발·테스트 전용 의존성
+#   pip install -r requirements-dev.txt
+#   실행: GEMINI_API_KEY=test python -m pytest tests/ -q
 pytest>=8.0
+
+# WS·인증 통합 테스트(fastapi.testclient)가 요구
+httpx>=0.27
