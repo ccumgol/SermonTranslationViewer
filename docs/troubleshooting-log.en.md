@@ -90,6 +90,36 @@ for the first time.
 - **Lesson**: External input (.env) is always a string. **Normalize types at the
   boundary.**
 
+### 4-3. Server keeps running after you "close" it, and the port collides (orphan process)
+- **Symptom**: `sermon` fails every time with `[Errno 48] address already in use`.
+  Closing the browser tab or the terminal doesn't stop the server; it keeps holding port 8000.
+- **Cause**: The server (uvicorn) is a **process independent of the browser**. ① A browser tab
+  is just a connected client — closing it doesn't stop the server. ② If the terminal that
+  launched the server closes, the process is adopted by the system (PID 1) and keeps running in
+  the background as an **orphan process**. This ghost server holds the port, so every later
+  restart collides.
+- **Fix**: `start.sh` now checks for a listener before starting
+  (`lsof -ti:PORT -sTCP:LISTEN`) and, if found, asks "kill and restart?" before proceeding.
+  Manual cleanup: `lsof -ti:8000 -sTCP:LISTEN | xargs kill`.
+- **How verified**: `ps -o ppid= -p <PID>` shows parent `1` (orphan); transcript-log filenames
+  reveal the real startup history (e.g. a 10:54 server → an 11:10 server).
+- **Lesson**: Server and client (browser) have **different lifetimes**. Stop the server at the
+  process. Keeping the launching terminal open and ending with `Ctrl+C` prevents orphaning; a
+  restart script should **check port ownership first**.
+
+### 4-4. The auto operator token looks like it changes every restart
+- **Symptom**: Each restart prints *"🔐 operator token auto-generated"* with a **different
+  value**, making already-open operator tabs/bookmarks seem invalidated.
+- **Cause**: The token is actually saved to a temp file and **reused**, but the message said
+  "auto-generated" even on reuse — misleading. (During the earlier port-collision failures
+  (4-3), the file wasn't established yet, so it really did differ each time — compounding the
+  confusion.)
+- **Fix**: Distinguish reuse vs new: print *"reusing saved operator token"* vs *"auto-generated"*.
+- **How verified**: token file value = the running server's value = the URL token on screen all
+  **matched** → reuse works correctly.
+- **Lesson**: Saying "created" for an action that changes nothing (reuse) misleads users.
+  **Log messages must reflect what actually happened.**
+
 ---
 
 ## 5. UI / subtitle rendering
@@ -117,6 +147,16 @@ for the first time.
 - **Fix**: Open a separate popup window + **fullscreen toggle** (Fullscreen API,
   double-click).
 - **Lesson**: Cleanest output = OBS browser source or true fullscreen.
+
+### 5-4. Operator screen's transcript/translation area grows off-screen
+- **Symptom**: The Korean-transcript and translation cards grow taller without bound as speech
+  accumulates, pushing the top of the dashboard out of view (the window grows instead of scrolling).
+- **Cause**: The server caps the transcript at the last 16 lines (tail), but the screen CSS
+  (`.source`/`.target-line`) had no `max-height`/`overflow`, so the card grew past the viewport.
+- **Fix**: Give both areas `max-height` + `overflow-y:auto`, and on each new subtitle set
+  `scrollTop=scrollHeight` to **auto-scroll to the bottom so the latest is always visible**.
+- **Lesson**: For "ever-accumulating" areas, pair **height cap + scroll + auto-reveal-latest**.
+  Even if the server limits the data, the display must limit it again or the screen grows forever.
 
 ---
 
@@ -168,6 +208,23 @@ for the first time.
 - **Symptom**: Bumping to 1.7B for accuracy was **slower and not more accurate**.
 - **Fix**: Keep 0.6B (warm: ~3.7 s for 9 s of audio). Make model size env-swappable.
 - **Lesson**: "Bigger = better" is false. **Measure** cost vs benefit.
+
+### 6-7. Gauge shows signal, but offline transcription produces nothing (input too quiet)
+- **Symptom**: Input that worked online (Gemini) produces **no transcription at all** offline.
+  The input-level bar is green (-42 dB) as if signal is arriving, yet transcription is empty.
+- **Cause**: The input is below the offline STT's VAD **silence threshold**
+  (`SILENCE_RMS=0.015` ≈ **-36.5 dBFS**), so **everything is discarded as "silence"** — no
+  utterance segment forms and `transcribe()` is never called. Online (Gemini) transcribes quiet
+  audio thanks to its own gain/noise handling, hence "online works, offline doesn't." Also, the
+  gauge floor (-60 dB) and the STT threshold (-36.5 dB) differ, creating a **blind spot where
+  the bar is green but nothing transcribes** (-60 to -36.5 dB).
+- **Fix**: ① Raise system/mixer **volume** above the threshold. ② When offline hits this dead
+  zone, show a gauge warning: *"Audio is too quiet to transcribe. Raise the volume"* (`too_quiet`).
+  You may lower `STT_SILENCE_RMS`, but that trades off against noise false-positives.
+- **How verified**: Raising system volume to 100% started transcription immediately.
+- **Lesson**: **"Signal is visible ≠ it's processed."** When the display (gauge) and the actual
+  decision (STT threshold) use different criteria, users can't find the cause. **Observability**
+  (surfacing *why* it isn't working) is the key to debugging.
 
 ---
 
