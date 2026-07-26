@@ -85,6 +85,14 @@ Everything is controlled here during the service. Top-right **EN/한글** button
 - **6-2. Backend toggle** — click the top badge to switch online↔offline live (languages
   kept; offline load ~10s). One-click **fallback when internet drops**.
 - **6-3. Audio source** — dropdown switches device instantly **without dropping the session**.
+  Devices tagged **🔊 computer audio** (BlackHole etc.) capture what the *computer plays*
+  (YouTube, recordings), which is handy for testing.
+  The **input level meter** below the dropdown shows whether signal is actually arriving —
+  picking a device does not by itself mean sound is flowing (we hit exactly this).
+  Silent = no signal at all; green ≈ normal speech; yellow/red = too hot, lower the gain.
+  After 4s of silence a hint appears, tailored to the selected device: for a
+  🔊 computer-audio device you must also set **macOS System Settings → Sound → Output**
+  to BlackHole (use a Multi-Output Device if you want to hear it too).
 - **6-4. Languages (1–3)** — up to 3 targets, each with a text color; screen splits into rows.
   **N languages = N× cost** (online).
 - **6-5. Sermon script (recommended)** — paste the script and Apply. Proper nouns are

@@ -37,7 +37,14 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 
-from audio_input import AudioCapture, AudioFanout, input_devices, queue_chunks
+from audio_input import (
+    SILENCE_DBFS,
+    AudioCapture,
+    AudioFanout,
+    input_devices,
+    queue_chunks,
+    rms_to_dbfs,
+)
 from config import Settings
 from languages import LANGUAGES, VALID_CODES
 from live_session import TranscriptEvent
@@ -58,6 +65,8 @@ SCRIPT_PATH = Path(__file__).resolve().parent.parent / "data" / "sermons" / "cur
 
 # 온라인(Gemini) 분당 단가(USD, 입력+출력 전사 기준) — 예상 비용 표시용
 COST_PER_MIN = float(os.getenv("COST_PER_MIN", "0.037"))
+# 입력 레벨 게이지 전송 주기(초). 5회/초면 말소리 움직임이 자연스럽게 보인다.
+LEVEL_PUSH_SEC = float(os.getenv("LEVEL_PUSH_SEC", "0.2"))
 # 무발화 이 시간(분) 이상이면 "끄는 걸 잊지 않았나요?" 경고
 IDLE_WARN_MIN = float(os.getenv("IDLE_WARN_MIN", "5"))
 # 한 WebSocket 연결에서 허용하는 인증 실패 횟수(초과 시 연결 종료 — 브루트포스 차단)
@@ -108,6 +117,9 @@ class Hub:
 
     def __init__(self) -> None:
         self._clients: set[WebSocket] = set()
+        # 운영자 인증을 마친 연결. 입력 레벨처럼 자주(≈5회/초) 갱신되는 정보는
+        # 교인 폰까지 보내면 대역폭 낭비라 이쪽에만 보낸다.
+        self._operators: set[WebSocket] = set()
 
     @property
     def is_full(self) -> bool:
@@ -119,6 +131,24 @@ class Hub:
 
     async def unregister(self, ws: WebSocket) -> None:
         self._clients.discard(ws)
+        self._operators.discard(ws)
+
+    def mark_operator(self, ws: WebSocket) -> None:
+        """운영자 인증을 마친 연결로 표시."""
+        self._operators.add(ws)
+
+    @property
+    def has_operator(self) -> bool:
+        return bool(self._operators)
+
+    async def send_operators(self, payload: dict) -> None:
+        """운영자 화면에만 전송(교인 폰·송출 화면 제외)."""
+        message = json.dumps(payload, ensure_ascii=False)
+        for ws in list(self._operators):
+            try:
+                await ws.send_text(message)
+            except Exception:  # noqa: BLE001
+                await self.unregister(ws)
 
     async def broadcast(self, payload: dict) -> None:
         message = json.dumps(payload, ensure_ascii=False)
@@ -470,16 +500,43 @@ async def pipeline(settings: Settings) -> None:
             print("[server] 방송 종료 상태로 시작 (AUTO_START=0) — 운영자 화면에서 시작")
 
         heartbeat = asyncio.create_task(_usage_heartbeat())
+        level_task = asyncio.create_task(_level_heartbeat())
         try:
             await asyncio.Event().wait()  # 종료될 때까지 대기
         finally:
             heartbeat.cancel()
+            level_task.cancel()
             for code in list(state.workers):
                 await state.workers.pop(code).stop()
             close = getattr(state.backend, "aclose", None)
             if close is not None:
                 await close()
             await fanout.stop()
+
+
+async def _level_heartbeat() -> None:
+    """입력 레벨을 운영자 화면에 주기적으로 push (게이지용).
+
+    장치를 골라도 소리가 실제로 들어오는지 화면만 봐서는 알 수 없었기 때문에
+    추가했다(예: BlackHole 을 골랐지만 macOS 출력이 그쪽으로 가지 않는 경우).
+    방송 중이 아니어도 보낸다 — 방송 시작 전에 연결을 점검하는 것이 목적이다.
+    """
+    while True:
+        await asyncio.sleep(LEVEL_PUSH_SEC)
+        if state.capture is None or not hub.has_operator:
+            continue  # 볼 사람이 없으면 계산도 전송도 하지 않는다
+        try:
+            rms = state.capture.pop_level()
+        except Exception:  # noqa: BLE001
+            continue
+        await hub.send_operators(
+            {
+                "type": "level",
+                "rms": round(rms, 5),
+                "dbfs": round(rms_to_dbfs(rms), 1),
+                "silent": rms_to_dbfs(rms) <= SILENCE_DBFS,
+            }
+        )
 
 
 async def _usage_heartbeat() -> None:
@@ -905,6 +962,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 # 인증이 확인되면(또는 토큰 미사용 환경이면) 운영자 정보를 1회 전달
                 if (ok or not token) and not operator_synced:
                     operator_synced = True
+                    hub.mark_operator(ws)
                     await ws.send_text(
                         json.dumps(_operator_init(), ensure_ascii=False)
                     )

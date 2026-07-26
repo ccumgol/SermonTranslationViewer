@@ -393,6 +393,47 @@ missing**. Re-diagnosis showed the cause was **not caching but the token**.
 
 ---
 
+### 3.10 Input level meter — "BlackHole selected but nothing transcribes" (2026-07-26, resolved)
+
+**Symptom (user)**: operator screen looked fine, BlackHole 2ch was selectable, but nothing
+was transcribed. "There seems to be no input signal."
+
+**Diagnosis**: measured instead of guessing. Captured 3s from BlackHole →
+`29 callbacks, peak RMS = 0.000000`. The stream opened and callbacks fired, but **every
+sample was zero**. `system_profiler` showed the macOS default output was still the speakers.
+
+**Cause**: not a code bug. BlackHole is an output→input loopback device, so unless
+**macOS System Settings → Sound → Output** is switched to BlackHole, no audio ever flows in.
+Selecting the input device is not enough.
+
+**The real problem was unobservability**: everything looked correct on screen, so there was
+no way to see that the signal was zero. That is exactly why the user asked for a meter.
+
+**Implementation**
+| Layer | What |
+|-------|------|
+| `audio_input.py` | Accumulate per-chunk RMS as a peak in the audio callback; `pop_level()` consumes and resets. `rms_to_dbfs()` floors at -60dB. Peak resets on device switch so the old device's signal can't look live |
+| `ws_server.py` | `Hub._operators` tracks **authenticated operator sockets only**. `_level_heartbeat()` pushes `{"type":"level", dbfs, silent}` every 0.2s to those sockets only (5×/s to dozens of phones would be waste) |
+| `operator/index.html` | Colour-scaled bar + dB readout. After 4s of silence, a hint **tailored to the selected device** (🔊 computer audio → change the macOS output; mic → check power/connection) |
+
+**Two design calls**
+- **Peak, not average**: averaging buries short speech in the surrounding silence and the bar
+  barely moves.
+- **No gradient on the bar itself**: the first version put the green→red gradient on the bar,
+  and when the bar shrank the colours compressed so **green-yellow-red repeated three times**
+  (caught in a screenshot). A colour scale must stay fixed regardless of bar length, so the
+  gradient now lives on the container and an **overlay masks the not-yet-reached portion**.
+
+**Verification** (measured in-browser)
+- Vocaster → `-24 dB`, bar 59% (real room noise)
+- BlackHole → `silent`, bar 0%, correct warning text
+- Mapping: -60dB→0% / -30dB→50% / -3dB→95% (red zone)
+- 85 tests pass (11 new level tests + 2 operator-only delivery tests)
+
+**Note for other Agents**: `Hub` now has an `_operators` set. `unregister()` must remove from
+both sets (otherwise we keep sending to dead sockets), and frequently-updating operator-only
+data should use `send_operators()` rather than `broadcast()`.
+
 ## 4. Work Board
 
 Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (intentional)

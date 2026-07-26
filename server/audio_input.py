@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import math
 import sys
 
 import numpy as np
@@ -24,6 +25,23 @@ from config import (
     INPUT_DTYPE,
     INPUT_SAMPLE_RATE,
 )
+
+
+# 16-bit PCM 최대 진폭 — RMS 를 0.0~1.0 로 정규화할 때 쓴다.
+INT16_FULL_SCALE = 32768.0
+# 게이지 하한. 이보다 조용하면 '무음'으로 표시한다.
+SILENCE_DBFS = -60.0
+
+
+def rms_to_dbfs(rms: float) -> float:
+    """RMS(0.0~1.0)를 dBFS 로 변환. 무음은 SILENCE_DBFS 로 바닥을 둔다.
+
+    사람 귀는 로그 스케일이라, 선형 RMS 를 그대로 막대로 그리면 보통의 말소리도
+    거의 왼쪽 끝에 붙어 보인다.
+    """
+    if rms <= 0.0:
+        return SILENCE_DBFS
+    return max(SILENCE_DBFS, 20.0 * math.log10(rms))
 
 
 class AudioCapture:
@@ -38,11 +56,16 @@ class AudioCapture:
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=max_queue)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stream: sd.InputStream | None = None
+        # 입력 레벨(0.0~1.0 RMS) 피크 — 운영자 화면 게이지용.
+        # 오디오 콜백 스레드가 쓰고 이벤트 루프가 읽지만, float 대입/읽기는
+        # GIL 하에서 원자적이라 락이 필요 없다(값이 조금 늦게 반영돼도 무해).
+        self._peak_level = 0.0
 
     def _callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         if status:
             # 오버플로우/언더런 등은 무시하지 않고 표준에러로 알린다.
             print(f"[audio] 입력 상태 경고: {status}", file=sys.stderr)
+        self._track_level(indata)
         # indata: int16 mono → 그대로 PCM 바이트로 변환
         pcm_bytes = bytes(indata)
         if self._loop is None:
@@ -69,6 +92,28 @@ class AudioCapture:
             except asyncio.QueueFull:
                 pass
 
+    def _track_level(self, indata) -> None:  # noqa: ANN001
+        """이번 청크의 RMS 를 계산해 피크로 누적(오디오 콜백 스레드에서 실행)."""
+        try:
+            samples = np.asarray(indata, dtype=np.float32)
+            if samples.size == 0:
+                return
+            rms = float(np.sqrt(np.mean(np.square(samples)))) / INT16_FULL_SCALE
+        except Exception:  # noqa: BLE001
+            return  # 레벨 표시는 부가 기능 — 실패해도 오디오 흐름을 막지 않는다
+        if rms > self._peak_level:
+            self._peak_level = rms
+
+    def pop_level(self) -> float:
+        """마지막 호출 이후의 피크 레벨(0.0~1.0)을 반환하고 초기화한다.
+
+        피크를 쓰는 이유: 평균을 내면 짧은 말소리가 무음에 묻혀 게이지가
+        거의 움직이지 않는다.
+        """
+        peak = self._peak_level
+        self._peak_level = 0.0
+        return peak
+
     def _open_stream(self, device: str | int | None) -> None:
         stream = sd.InputStream(
             samplerate=INPUT_SAMPLE_RATE,
@@ -83,6 +128,8 @@ class AudioCapture:
         self._device = device
 
     def _close_stream(self) -> None:
+        # 장치를 바꾸면 이전 장치의 레벨이 남아 '신호 있음'으로 잘못 보이지 않게 한다.
+        self._peak_level = 0.0
         if self._stream is not None:
             # stop() 은 진행 중인 콜백이 끝날 때까지 블록 → 스트림 교체가 안전.
             self._stream.stop()

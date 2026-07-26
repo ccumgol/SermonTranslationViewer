@@ -54,6 +54,35 @@
     .slot { display: flex; gap: 8px; align-items: flex-end; }
     .target-line { font-size: 21px; line-height: 1.5; min-height: 1.6em; white-space: pre-wrap; margin-bottom: 8px; }
     .target-tag { font-size: 12px; color: #8a93a6; }
+    /* 입력 레벨 게이지 — 초록(적정) → 노랑 → 빨강(과입력) */
+    /* 색 눈금은 '레벨 척도'라서 막대 길이와 무관하게 고정돼야 한다.
+       그래서 그라디언트를 눈금자(컨테이너)에 깔고, 아직 도달하지 않은
+       오른쪽 구간을 어두운 마스크로 덮는다. (막대에 직접 그라디언트를 주면
+       막대가 짧아질 때 색이 압축·반복되어 척도의 의미가 사라진다) */
+    #level-meter {
+      position: relative; flex: 1; min-width: 220px; height: 14px;
+      border: 1px solid #2a3040; border-radius: 7px; overflow: hidden;
+      background: linear-gradient(90deg,
+        #2ecc71 0%, #2ecc71 70%, #f1c40f 86%, #e74c3c 96%);
+    }
+    #level-bar {          /* 미도달 구간 마스크 — width 는 (100 - 레벨)% */
+      position: absolute; top: 0; right: 0; bottom: 0; width: 100%;
+      background: #11141c;
+      transition: width 90ms linear;
+    }
+    /* 눈금: 적정 발화 구간(-30dB)과 과입력 경계(-15dB) 표시 */
+    .level-tick {   /* 마스크 위에 그려야 눈금이 항상 보인다 */
+      position: absolute; top: 0; bottom: 0; width: 1px;
+      background: #6b7488; opacity: .55; z-index: 1;
+    }
+    .level-db {
+      min-width: 74px; text-align: right; font-variant-numeric: tabular-nums;
+      font-size: 12px; color: #8a93a6;
+    }
+    .level-warn {
+      margin-top: 8px; padding: 8px 10px; border-radius: 6px;
+      background: #3a2a12; border: 1px solid #7a5a20; color: #ffca6b; font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -85,6 +114,17 @@
         <button id="btn-refresh-devices" data-i18n="refreshList">🔄 목록 새로고침</button>
         <span id="device-msg"></span>
       </div>
+      <!-- 입력 레벨 게이지 — 장치를 골라도 실제로 소리가 들어오는지 확인용 -->
+      <div class="row" style="align-items:center; margin-top:10px;">
+        <span class="label" style="min-width:88px;" data-i18n="inputLevel">입력 레벨</span>
+        <div id="level-meter" title="-60dB … 0dB">
+          <div id="level-bar"></div>
+          <div class="level-tick" style="left:50%"></div>
+          <div class="level-tick" style="left:75%"></div>
+        </div>
+        <span id="level-db" class="level-db">—</span>
+      </div>
+      <div id="level-warn" class="level-warn" hidden></div>
     </div>
 
     <!-- 모바일 자막 주소 / QR -->
@@ -194,6 +234,9 @@
     const deviceSelect = document.getElementById("device-select");
     const btnRefreshDevices = document.getElementById("btn-refresh-devices");
     const deviceMsg = document.getElementById("device-msg");
+    const levelBar = document.getElementById("level-bar");
+    const levelDb = document.getElementById("level-db");
+    const levelWarn = document.getElementById("level-warn");
     const langSlots = document.getElementById("lang-slots");
     const languageMsg = document.getElementById("language-msg");
 
@@ -210,6 +253,9 @@
         title: "설교 실시간 번역 — 운영자 대시보드",
         outputHint: '송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용',
         audioSource: "오디오 입력 소스", currentDevice: "현재 입력 장치",
+        inputLevel: "입력 레벨", levelSilent: "무음",
+        silentMic: "⚠ 입력 신호가 없습니다. 마이크·믹서가 켜져 있는지, 선택한 장치가 맞는지 확인하세요.",
+        silentSystemAudio: "⚠ 입력 신호가 없습니다. 컴퓨터 소리를 번역하려면 macOS [시스템 설정 → 사운드 → 출력]을 이 장치(BlackHole 등)로 바꿔야 합니다. 소리도 같이 들으려면 ‘다중 출력 장치’를 만들어 사용하세요.",
         refreshList: "🔄 목록 새로고침",
         langCardHint: "번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가",
         scriptCardHint: "설교 원고 — 붙여넣으면 고유명사를 뽑아 전사를 자동 교정 (예: 티브리어→히브리어)",
@@ -247,6 +293,9 @@
         title: "Sermon Live Translation — Operator Dashboard",
         outputHint: 'Output screen: <code>/</code> · use this URL as an OBS browser source',
         audioSource: "Audio input source", currentDevice: "Current device",
+        inputLevel: "Input level", levelSilent: "silent",
+        silentMic: "⚠ No input signal. Check that the mic/mixer is on and that the right device is selected.",
+        silentSystemAudio: "⚠ No input signal. To translate computer audio, set macOS [System Settings → Sound → Output] to this device (e.g. BlackHole). Create a Multi-Output Device if you also want to hear it.",
         refreshList: "🔄 Refresh list",
         langCardHint: "Target languages — up to 3 at once (input auto-detected) · cost scales with count",
         scriptCardHint: "Sermon script — paste it to auto-correct proper nouns in transcription",
@@ -403,7 +452,9 @@
     }
 
     // ── 오디오 소스 ──
+    let knownDevices = [];
     function populateDevices(devices, current) {
+      knownDevices = devices || [];
       deviceSelect.innerHTML = "";
       (devices || []).forEach((d) => {
         const opt = document.createElement("option");
@@ -416,9 +467,52 @@
     }
     deviceSelect.onchange = () => {
       deviceMsg.textContent = "";
+      silentSince = 0;                       // 장치를 바꿨으니 무음 판정도 새로 시작
       send({ cmd: "set_device", device: parseInt(deviceSelect.value, 10) });
     };
     btnRefreshDevices.onclick = () => send({ cmd: "list_devices" });
+
+    // ── 입력 레벨 게이지 ──
+    // 장치를 골라도 실제 신호가 들어오는지 화면만 봐서는 알 수 없어 추가했다.
+    // (예: BlackHole 선택했지만 macOS 출력이 그쪽으로 가지 않아 무음)
+    const MIN_DBFS = -60;                    // 게이지 왼쪽 끝
+    const SILENT_WARN_MS = 4000;             // 이만큼 계속 무음이면 안내를 띄운다
+    let silentSince = 0;
+    let lastSilent = null;                   // 언어 전환 시 문구를 다시 그리기 위해 보관
+
+    function currentDeviceIsSystemAudio() {
+      const idx = deviceSelect.value;
+      const dev = knownDevices.find((d) => String(d.index) === String(idx));
+      return !!(dev && dev.system_audio);
+    }
+
+    function renderLevelWarning() {
+      if (lastSilent === null) return;
+      if (!lastSilent) { levelWarn.hidden = true; return; }
+      levelWarn.hidden = false;
+      levelWarn.textContent = currentDeviceIsSystemAudio()
+        ? t("silentSystemAudio")
+        : t("silentMic");
+    }
+
+    function onLevel(msg) {
+      const db = typeof msg.dbfs === "number" ? msg.dbfs : MIN_DBFS;
+      const pct = Math.max(0, Math.min(100, ((db - MIN_DBFS) / -MIN_DBFS) * 100));
+      levelBar.style.width = `${100 - pct}%`;   // 마스크라 반대로 줄인다
+      levelDb.textContent = msg.silent ? t("levelSilent") : `${db.toFixed(0)} dB`;
+
+      const now = Date.now();
+      if (msg.silent) {
+        if (!silentSince) silentSince = now;
+      } else {
+        silentSince = 0;
+      }
+      const silentLongEnough = !!silentSince && now - silentSince >= SILENT_WARN_MS;
+      if (silentLongEnough !== lastSilent) {
+        lastSilent = silentLongEnough;
+        renderLevelWarning();
+      }
+    }
 
     // ── 번역 언어 슬롯 (3개) ──
     // 각 슬롯: 언어 select + 색상. 슬롯1은 필수, 2·3은 "(사용 안 함)" 가능.
@@ -701,6 +795,9 @@
             broadcasting = msg.active;
             refreshBroadcastBtn();
             tmsg(languageMsg, () => broadcasting ? t("bcStarted") : t("bcStopped"));
+            break;
+          case "level":
+            onLevel(msg);
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);
