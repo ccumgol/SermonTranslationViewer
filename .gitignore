@@ -8,7 +8,9 @@
 data/sermons/*
 data/logs/*
 data/glossary/*
-data/runtime/          # 운영자 접속 URL(토큰 포함) — 절대 커밋 금지
+# 운영자 접속 URL(토큰 포함) — 절대 커밋 금지
+# (주의: gitignore 는 줄 끝 인라인 주석을 패턴의 일부로 해석하므로 주석을 위 줄에 둔다)
+data/runtime/
 !data/**/.gitkeep
 !data/glossary/*.example.txt
 *.db

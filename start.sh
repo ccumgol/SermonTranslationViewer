@@ -38,7 +38,8 @@ echo "   (종료: Ctrl+C)"
 echo
 
 # 이전 실행의 URL 파일을 지워, 새 토큰이 기록될 때까지 기다리게 한다
-URL_FILE="data/runtime/operator_url.txt"
+# (토큰이 담기므로 저장소 밖 임시 디렉터리에 둔다 — 실수로 커밋되는 것을 방지)
+URL_FILE="${TMPDIR:-/tmp}/translateviewer/operator_url.txt"
 rm -f "${URL_FILE}"
 
 # 서버가 뜨면 운영자 화면을 자동으로 연다 (OPEN_BROWSER=0 이면 끔)

@@ -26,6 +26,7 @@ import hmac
 import json
 import os
 import socket
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -47,7 +48,9 @@ from translation_backend import GeminiBackend, TranslationBackend
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 # 기동 시 운영자 접속 URL(토큰 포함)을 남기는 위치 — start.sh 가 읽는다(git 제외).
-RUNTIME_DIR = Path(__file__).resolve().parent.parent / "data" / "runtime"
+# ⚠️ 저장소 안에 두면 실수로 커밋되어 토큰이 공개될 수 있다(실제로 한 번 발생).
+#    그래서 저장소 밖(OS 임시 디렉터리)에 저장한다 — git 에 들어갈 경로 자체가 없다.
+RUNTIME_DIR = Path(tempfile.gettempdir()) / "translateviewer"
 OPERATOR_URL_FILE = RUNTIME_DIR / "operator_url.txt"
 # 설교 원고 저장 위치(재시작 후에도 유지). data/ 는 git 제외.
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "data" / "sermons" / "current_script.txt"
