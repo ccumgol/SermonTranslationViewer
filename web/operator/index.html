@@ -238,6 +238,7 @@
         bcStarted: "방송 시작됨.", bcStopped: "방송 종료됨.",
         devRefreshed: "목록을 새로고침했습니다.", devSwitched: "입력 장치를 전환했습니다 →", devError: "⚠ 장치 전환 실패:", tokenHint: "주소에 ?token=… 을 붙여 여세요.",
         mobileTitle: "모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기", extractMobile: "📱 모바일 주소 / QR 추출",
+        throttled: "너무 빠릅니다 — 잠시 후 다시 시도하세요", scriptTruncated: "원고가 너무 길어 앞부분만 적용했습니다",
         detecting: "주소 확인 중…", mobileHint: "폰을 같은 와이파이에 연결한 뒤 QR을 스캔하거나 주소를 입력하세요.", otherAddrs: "다른 주소 후보:", mobileFail: "⚠ 주소 확인 실패", enlarge: "🔍 QR 크게 보기", closeHint: "아무 곳이나 클릭(또는 Esc)하면 닫힙니다",
       },
       en: {
@@ -272,6 +273,7 @@
         bcStarted: "Broadcast started.", bcStopped: "Broadcast stopped.",
         devRefreshed: "Device list refreshed.", devSwitched: "Input device switched →", devError: "⚠ Device switch failed:", tokenHint: "add ?token=… to the URL.",
         mobileTitle: "Mobile subtitle URL (for attendees) — read subtitles in your language on your phone", extractMobile: "📱 Get mobile URL / QR",
+        throttled: "Too fast — please retry shortly", scriptTruncated: "Script too long; only the beginning was applied",
         detecting: "Detecting address…", mobileHint: "Connect your phone to the same Wi-Fi, then scan the QR or type the URL.", otherAddrs: "Other candidates:", mobileFail: "⚠ Failed to detect address", enlarge: "🔍 Enlarge QR", closeHint: "Click anywhere (or Esc) to close",
       },
     };
@@ -655,6 +657,12 @@
             break;
           case "usage":
             applyUsage(msg);
+            break;
+          case "command_throttled":
+            tmsg(languageMsg, () => `⏳ ${t("throttled")} (${msg.retry_after}s)`);
+            break;
+          case "script_truncated":
+            tmsg(scriptMsg, () => `⚠ ${t("scriptTruncated")} (${msg.limit})`);
             break;
           case "script_state":
             tmsg(scriptMsg, () => msg.terms > 0

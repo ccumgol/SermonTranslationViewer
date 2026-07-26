@@ -62,6 +62,22 @@ IDLE_WARN_MIN = float(os.getenv("IDLE_WARN_MIN", "5"))
 # 한 WebSocket 연결에서 허용하는 인증 실패 횟수(초과 시 연결 종료 — 브루트포스 차단)
 MAX_AUTH_FAILURES = 5
 
+# ── 남용 방지 상한 (H-3 / H-4) ─────────────────────────────────
+# 운영 명령 연타로 세션 재시작 스톰·과금 급증이 생기는 것을 막는 쿨다운(초).
+COMMAND_COOLDOWN_SEC = float(os.getenv("COMMAND_COOLDOWN_SEC", "2"))
+# 백엔드 전환은 모델 로딩이 있어 더 길게 잡는다.
+BACKEND_COOLDOWN_SEC = float(os.getenv("BACKEND_COOLDOWN_SEC", "10"))
+# 쿨다운을 적용할 명령(무해한 reset·list_devices 등은 제외)
+_COOLDOWN_COMMANDS = {
+    "set_languages", "set_backend", "set_broadcast", "set_device", "set_script",
+}
+# 설교 원고 최대 길이(자). 일반 설교 원고는 1~2만 자 수준.
+MAX_SCRIPT_CHARS = int(os.getenv("MAX_SCRIPT_CHARS", "100000"))
+# 동시 WebSocket 연결 상한(교인 폰 다수 접속 고려)
+MAX_WS_CLIENTS = int(os.getenv("MAX_WS_CLIENTS", "100"))
+# WebSocket 메시지 크기 상한(바이트) — 원고 10만 자(UTF-8 최대 3바이트) + 여유
+WS_MAX_MESSAGE_BYTES = int(os.getenv("WS_MAX_MESSAGE_BYTES", str(512 * 1024)))
+
 # 송출 화면 공유 스타일 (글자색은 언어별로 따로 지정하므로 여기엔 없음)
 DEFAULT_STYLE: dict = {
     "fontSize": 4.0,       # vw 단위 글자 크기
@@ -87,6 +103,11 @@ class Hub:
 
     def __init__(self) -> None:
         self._clients: set[WebSocket] = set()
+
+    @property
+    def is_full(self) -> bool:
+        """동시 연결 상한 도달 여부(H-4) — 무한 연결로 자원이 고갈되는 것을 막는다."""
+        return len(self._clients) >= MAX_WS_CLIENTS
 
     async def register(self, ws: WebSocket) -> None:
         self._clients.add(ws)
@@ -210,6 +231,8 @@ class AppState:
     last_speech_at: float = 0.0
     logger: TranscriptLogger | None = None
     script: ScriptCorrector = field(default_factory=ScriptCorrector)
+    # 명령별 마지막 실행 시각(쿨다운 판정용) — {명령이름: monotonic 초}
+    last_command_at: dict[str, float] = field(default_factory=dict)
     # 워커 재구성(언어/백엔드/장치) 동시 실행 방지 — 유령 워커 발생 차단
     reconfig_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -585,9 +608,38 @@ async def health() -> dict:
     }
 
 
+def _cooldown_remaining(name: str) -> float:
+    """쿨다운이 남아 있으면 남은 초, 아니면 0 (H-3).
+
+    운영 명령을 연타하면 워커·세션이 반복 재시작되어 지연·과금이 급증한다.
+    무해한 명령(reset, list_devices 등)은 대상에서 제외한다.
+    """
+    if name not in _COOLDOWN_COMMANDS:
+        return 0.0
+    window = BACKEND_COOLDOWN_SEC if name == "set_backend" else COMMAND_COOLDOWN_SEC
+    last = state.last_command_at.get(name, 0.0)
+    elapsed = time.monotonic() - last
+    return max(0.0, window - elapsed)
+
+
 async def _handle_command(cmd: dict) -> None:
     """운영자 화면에서 온 명령을 처리하고 결과를 전체에 브로드캐스트."""
     name = cmd.get("cmd")
+
+    # 남용 방지: 같은 명령을 짧은 간격으로 반복하면 무시하고 운영자에게 알린다.
+    remaining = _cooldown_remaining(name)
+    if remaining > 0:
+        await hub.broadcast(
+            {
+                "type": "command_throttled",
+                "cmd": name,
+                "retry_after": round(remaining, 1),
+            }
+        )
+        return
+    if name in _COOLDOWN_COMMANDS:
+        state.last_command_at[name] = time.monotonic()
+
     if name == "reset":
         state.reset_all()
         await hub.broadcast({"type": "reset"})
@@ -628,7 +680,18 @@ async def _handle_command(cmd: dict) -> None:
 
 async def _set_script(text: str) -> None:
     """설교 원고를 설정 — 교정 용어 추출 + 저장 + 상태 전파."""
-    text = text or ""
+    if not isinstance(text, str):
+        text = ""
+    # 길이 상한(H-4): 과도한 원고로 메모리·디스크·교정 연산이 폭증하는 것을 막는다.
+    if len(text) > MAX_SCRIPT_CHARS:
+        print(
+            f"[server] 원고가 상한을 초과해 잘라 적용합니다 "
+            f"({len(text)} > {MAX_SCRIPT_CHARS}자)"
+        )
+        text = text[:MAX_SCRIPT_CHARS]
+        await hub.broadcast(
+            {"type": "script_truncated", "limit": MAX_SCRIPT_CHARS}
+        )
     n = state.script.set_script(text)
     try:
         SCRIPT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -702,6 +765,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
         print(f"[server] ⚠ 차단된 Origin 의 WebSocket 접속: {ws.headers.get('origin')}")
         await ws.close(code=4403)
         return
+    if hub.is_full:
+        # 동시 연결 상한(H-4) — 자원 고갈 방지
+        print(f"[server] ⚠ 연결 상한({MAX_WS_CLIENTS}) 도달 — 새 접속 거부")
+        await ws.close(code=4429)
+        return
     await ws.accept()
     await hub.register(ws)
     auth_failures = 0
@@ -767,4 +835,11 @@ if __name__ == "__main__":
     import uvicorn
 
     cfg = Settings.load()
-    uvicorn.run("ws_server:app", host=cfg.ws_host, port=cfg.ws_port, reload=False)
+    uvicorn.run(
+        "ws_server:app",
+        host=cfg.ws_host,
+        port=cfg.ws_port,
+        reload=False,
+        # WebSocket 메시지 크기 상한(H-4) — 과대 메시지로 메모리 고갈 방지
+        ws_max_size=WS_MAX_MESSAGE_BYTES,
+    )
