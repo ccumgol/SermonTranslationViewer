@@ -109,9 +109,9 @@ Agent 가 갑자기 멈췄을 때 사용자는 다음 한 줄만 남겨도 충�
 | 항목 | 상태 |
 |---|---|
 | 기능 완성도 | **운영 가능**. 온/오프라인 2-track, 다국어 1~3개, 모바일 자막·QR, 원고 교정 등 |
-| 테스트 | **49개 통과** — 단위 20 + WS·인증 11 + 남용방지 8 + 스타일 검증 10 |
+| 테스트 | **60개 통과** — 단위 20 + WS·인증 11 + 남용방지 8 + 스타일 10 + 정보노출 11 |
 | 문서 | README·setup-guide·troubleshooting·handover·analysis (한/영) |
-| 보안 | **1~2단계 + M-2 완료**(C-1·C-2·H-1 / H-3·H-4 / M-2). H-2, M-1·M-3·M-5, L 은 미착수 |
+| 보안 | **C-1·C-2·H-1·H-3·H-4·M-1·M-2·M-3·L-1 완료**. 남은 항목: H-2(HTTPS/WSS), M-5(락파일) |
 | 배포 | 로컬 LAN 전제. main 은 안정, 기능은 브랜치에서 작업 후 병합 |
 
 ---
@@ -261,6 +261,41 @@ H-1 브루트포스       : ✅ 연결 종료됨 (ConnectionClosedError)
 
 ---
 
+### 3.5 정보 노출·엔드포인트 보호 M-1 / M-3 / L-1 (2026-07-08, Agent B)
+
+**M-1 init 정보 분리** — 예전에는 인증 없는 연결(교인 폰·송출 화면)에도 장치 목록·백엔드·
+원고 용어 개수까지 보내, 주소만 아는 사람에게 내부 구성이 노출됐다.
+
+| 구분 | 내용 |
+|---|---|
+| 공용 `init` (인증 불필요) | `style`, `output_enabled`, `layout`, `languages` — 화면 동작에 필요한 값만 |
+| `operator_init` (인증 후 1회) | `devices`, `current_device`, `backend`, `broadcasting`, `script_terms`, `default_colors`, `max_languages` |
+
+- 운영자 화면은 `init` 수신 직후 무해한 명령(`list_devices`)을 보내 **인증을 트리거**하고,
+  그 응답으로 `operator_init` 을 받아 기존과 동일하게 동작한다.
+- ⚠️ **주의(다른 Agent 용)**: 인증 성공 시 `operator_init` 이 **먼저** 오므로, 명령 응답을
+  기다리는 테스트/코드는 이 메시지를 건너뛰어야 한다. 기존 테스트 3건이 이 때문에 깨져
+  헬퍼(`_send`/`_cmd`)가 `operator_init` 을 스킵하도록 수정했다.
+
+**M-3 `/qr.svg` 길이 상한** — 512자(`MAX_QR_TEXT_CHARS`) 초과 시 400. 상한이 없으면 임의
+텍스트로 QR 을 대량 생성시켜 CPU 를 소모시킬 수 있다(오픈프록시 악용).
+
+**L-1 보안 헤더** — 모든 HTTP 응답에 `X-Frame-Options: SAMEORIGIN`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`.
+(특히 Referrer-Policy 는 **토큰이 담긴 URL** 이 외부로 새는 것을 막는다)
+
+**실서버 검증**
+```
+L-1 헤더        : x-frame-options: SAMEORIGIN / nosniff / no-referrer  ✅
+M-3 QR          : 정상 26자 → 200 · 과대 600자 → 400  ✅
+M-1 인증 전 init: 노출 필드 없음, 공용 필드 4개만  ✅
+M-1 인증 후     : operator_init 수신(devices 6개)  ✅
+```
+테스트 `tests/test_info_exposure.py` 11개. **뮤테이션 검증**: M-1 무력화 1건, M-3 무력화
+2건, L-1 무력화 4건 실패 → 실효성 확인. 전체 **60 passed**.
+
+---
+
 ## 4. 작업 보드 (Work Board)
 
 상태: 🔴 미착수 · 🟡 진행중 · 🟢 완료 · ⚪ 보류(의도적)
@@ -274,11 +309,12 @@ H-1 브루트포스       : ✅ 연결 종료됨 (ConnectionClosedError)
 | H-2 | 토큰 URL 노출 → HTTPS/WSS·sessionStorage | 🔴 미착수 | — | UX 7.1 과 함께 처리 권장 |
 | H-3 | 운영 명령 rate limit(쿨다운) | 🟢 완료 | Agent B | 2026-07-08 · 2초(백엔드 10초), 뮤테이션 검증 |
 | H-4 | WS 메시지 크기·연결 수 상한 | 🟢 완료 | Agent B | 2026-07-08 · 원고 10만자·연결 100·메시지 512KB |
-| M-1 | init 내부정보를 인증 후 전송 | 🔴 미착수 | — | 장치명 등 |
+| M-1 | init 내부정보를 인증 후 전송 | 🟢 완료 | Agent B | 2026-07-08 · 공용 init/operator_init 분리 |
 | M-2 | `set_style` 화이트리스트 검증 | 🟢 완료 | Agent B | 2026-07-08 · 허용 키·타입·범위·색상형식, 뮤테이션 검증 |
-| M-3 | `/qr.svg` 길이·rate limit | 🔴 미착수 | — | 오픈프록시 소지 |
+| M-3 | `/qr.svg` 길이 제한 | 🟢 완료 | Agent B | 2026-07-08 · 512자 상한(초과 400) |
 | M-5 | 의존성 락파일 + pip-audit | 🔴 미착수 | — | |
-| L-1~3 | 보안 헤더·엔드포인트 노출·원고 길이 | 🔴 미착수 | — | |
+| L-1 | 보안 헤더 미들웨어 | 🟢 완료 | Agent B | X-Frame-Options·nosniff·Referrer-Policy |
+| L-2~3 | 엔드포인트 노출·원고 길이 | ⚪ 보류 | — | 원고 길이는 H-4 로 처리됨. /health 는 LAN 전제상 허용 |
 
 ### 4.2 사용자 편의성 (analysis-report 7장)
 | 우선 | 항목 | 상태 | 담당 |
@@ -357,6 +393,7 @@ H-1 브루트포스       : ✅ 연결 종료됨 (ConnectionClosedError)
 |---|---|---|
 | 2026-07-08 | Claude (Agent B) | 문서 생성. 보안 1단계 완료 반영, 작업 보드·점유 현황·인계 메모 정리 |
 | 2026-07-08 | Claude (Agent B) | **중단 대응 규칙(0.1) + 진행 중 작업 로그(8장) 추가** — 사용량 만료·크래시로 기록이 남지 않는 공백 해결 |
+| 2026-07-08 | Claude (Agent B) | **M-1·M-3·L-1 완료**(3.5) — init 정보분리·QR 길이제한·보안헤더, 테스트 11개(총 60) |
 | 2026-07-08 | Claude (Agent B) | **M-2·모바일 언어 유지 완료**(3.4) — 스타일 화이트리스트 검증 + localStorage, 테스트 10개 추가(총 49) |
 | 2026-07-08 | Claude (Agent B) | **H-3·H-4 완료**(3.3) — 쿨다운·원고/연결/메시지 상한 + 테스트 8개(뮤테이션 검증), 총 39 passed |
 | 2026-07-08 | Claude (Agent B) | **커밋 정책 변경**: Agent 가 직접 커밋·푸시(푸시 전 민감정보 점검 필수) |

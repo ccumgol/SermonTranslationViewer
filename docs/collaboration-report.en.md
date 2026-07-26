@@ -110,9 +110,9 @@ If an agent stops abruptly, one line from the user is enough:
 | Area | State |
 |---|---|
 | Features | **Production-usable**: online/offline dual track, 1–3 languages, mobile subtitles & QR, script correction |
-| Tests | **49 passing** — 20 unit + 11 WS/auth + 8 abuse-limit + 10 style validation |
+| Tests | **60 passing** — 20 unit + 11 WS/auth + 8 abuse-limit + 10 style + 11 info-exposure |
 | Docs | README · setup-guide · troubleshooting · handover · analysis (KO/EN) |
-| Security | **Phases 1–2 + M-2 done** (C-1, C-2, H-1 / H-3, H-4 / M-2). H-2, M-1·M-3·M-5, L not started |
+| Security | **C-1·C-2·H-1·H-3·H-4·M-1·M-2·M-3·L-1 done**. Remaining: H-2 (HTTPS/WSS), M-5 (lockfile) |
 | Deployment | LAN-only assumption. `main` is stable; features go on branches then merge |
 
 ---
@@ -264,6 +264,42 @@ on reconnect/refresh (the auto-selected language on first visit is saved too). W
 
 ---
 
+### 3.5 Info exposure & endpoint hardening M-1 / M-3 / L-1 (2026-07-08, Agent B)
+
+**M-1 init split** — previously unauthenticated connections (attendee phones, output screen)
+also received the device list, backend name, and script term count, exposing internals to anyone
+who knows the URL.
+
+| Payload | Contents |
+|---|---|
+| public `init` (no auth) | `style`, `output_enabled`, `layout`, `languages` — only what screens need |
+| `operator_init` (after auth, once) | `devices`, `current_device`, `backend`, `broadcasting`, `script_terms`, `default_colors`, `max_languages` |
+
+- The operator screen sends a harmless command (`list_devices`) right after `init` to **trigger
+  auth**, then receives `operator_init` and behaves exactly as before.
+- ⚠️ **Note for other agents**: on first successful auth, `operator_init` arrives **first**, so
+  code/tests waiting for a command reply must skip it. Three existing tests broke for this
+  reason; their helpers (`_send`/`_cmd`) now skip `operator_init`.
+
+**M-3 `/qr.svg` length cap** — over 512 chars (`MAX_QR_TEXT_CHARS`) returns 400. Without a cap,
+arbitrary text could be used to mass-generate QR codes and burn CPU (open-proxy abuse).
+
+**L-1 security headers** — every HTTP response gets `X-Frame-Options: SAMEORIGIN`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`
+(the last one prevents **tokenized URLs** from leaking outward).
+
+**Real-server verification**
+```
+L-1 headers   : x-frame-options: SAMEORIGIN / nosniff / no-referrer  ✅
+M-3 QR        : 26 chars → 200 · 600 chars → 400  ✅
+M-1 pre-auth  : no leaked fields, only 4 public fields  ✅
+M-1 post-auth : operator_init received (6 devices)  ✅
+```
+Tests: `tests/test_info_exposure.py` (11). **Mutation-verified**: disabling M-1 fails 1, M-3
+fails 2, L-1 fails 4. Total **60 passed**.
+
+---
+
 ## 4. Work Board
 
 Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (intentional)
@@ -277,11 +313,12 @@ Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (inten
 | H-2 | Token in URL → HTTPS/WSS · sessionStorage | 🔴 Not started | — | Pair with UX 7.1 |
 | H-3 | Rate limit on operator commands | 🟢 Done | Agent B | 2026-07-08 · 2s (backend 10s), mutation-verified |
 | H-4 | WS message size / connection caps | 🟢 Done | Agent B | 2026-07-08 · script 100k chars · 100 conns · 512KB msg |
-| M-1 | Send internal info in `init` only after auth | 🔴 Not started | — | Device names etc. |
+| M-1 | Send internal info in `init` only after auth | 🟢 Done | Agent B | 2026-07-08 · split public init / operator_init |
 | M-2 | Whitelist-validate `set_style` | 🟢 Done | Agent B | 2026-07-08 · keys/types/ranges/color format, mutation-verified |
-| M-3 | `/qr.svg` length + rate limit | 🔴 Not started | — | Open-proxy potential |
+| M-3 | `/qr.svg` length limit | 🟢 Done | Agent B | 2026-07-08 · 512-char cap (400 over) |
 | M-5 | Dependency lockfile + pip-audit | 🔴 Not started | — | |
-| L-1–3 | Security headers · endpoint exposure · script length | 🔴 Not started | — | |
+| L-1 | Security headers middleware | 🟢 Done | Agent B | X-Frame-Options·nosniff·Referrer-Policy |
+| L-2–3 | Endpoint exposure · script length | ⚪ Deferred | — | Script length covered by H-4; /health acceptable on LAN |
 
 ### 4.2 Usability (analysis-report §7)
 | Priority | Item | Status | Owner |
@@ -360,6 +397,7 @@ Recently modified files and **cautions**. Leave a note in section 6 before touch
 |---|---|---|
 | 2026-07-08 | Claude (Agent B) | Created. Recorded security phase 1, work board, file ownership, handover notes |
 | 2026-07-08 | Claude (Agent B) | **Added interruption protocol (0.1) + Live Work Log (§8)** — closes the gap where usage limits/crashes leave no record |
+| 2026-07-08 | Claude (Agent B) | **M-1·M-3·L-1 done** (§3.5) — init split, QR cap, security headers, 11 tests (60 total) |
 | 2026-07-08 | Claude (Agent B) | **M-2 & mobile language persistence done** (§3.4) — style whitelist + localStorage, 10 tests (49 total) |
 | 2026-07-08 | Claude (Agent B) | **H-3 & H-4 done** (§3.3) — cooldown + script/connection/message caps + 8 tests (mutation-verified), 39 passing |
 | 2026-07-08 | Claude (Agent B) | **Commit policy changed**: agents now commit/push directly (secret check required before push) |
