@@ -26,8 +26,13 @@
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt    # 최신 호환 버전
+#   또는 검증된 조합 그대로(운영 환경 권장):
+#   pip install -r requirements.lock
 ```
+
+> 취약점 점검: `pip install pip-audit && pip-audit`
+> (2026-07-08 이 스캔으로 `pyasn1` 취약점 3건을 발견해 조치했습니다)
 
 `sounddevice` 는 PortAudio 가 필요합니다.
 - macOS: `brew install portaudio`
@@ -67,7 +72,11 @@ pip install -r requirements.txt
 python server/audio_input.py --list                       # 장치 목록
 python server/audio_input.py --monitor --device "장치이름"  # 말할 때 막대가 움직이는지
 ```
-확인한 장치 번호(또는 이름)를 `.env` 의 `AUDIO_INPUT_DEVICE` 에 입력 (예: `2`).
+확인한 장치를 `.env` 의 `AUDIO_INPUT_DEVICE` 에 입력합니다.
+
+> 💡 **장치 이름으로 지정하세요** (예: `AUDIO_INPUT_DEVICE=Vocaster Two USB`).
+> USB 를 다시 꽂으면 **인덱스 번호가 바뀌어** 서버가 장치를 못 찾는 일이 실제로 있었습니다.
+> 이름으로 지정하면 이 문제가 없습니다.
 
 ---
 
@@ -129,12 +138,16 @@ start.bat  또는  start.ps1  # Windows
 | **↺ 화면 리셋** | 누적 자막 즉시 비움 |
 | **⏹ 송출 가리기 / ▶ 송출 재개** | 송출 화면만 가림(번역은 계속) |
 
-### 6-8. 모바일 주소 / QR (교인 폰 안내)
+### 6-8. 모바일 화면 접근성 (교인용)
+- `/m` 상단에 **A− / A+** (글자 크기 3단계), **◐** (고대비: 흰 배경·검은 글씨) 버튼이 있습니다.
+- 선택은 폰에 저장되어 다시 접속해도 유지됩니다. 시니어 교인·밝은 자리에 유용합니다.
+
+### 6-9. 모바일 주소 / QR (교인 폰 안내)
 - **📱 모바일 주소 / QR 추출** → 접속 주소와 QR 표시(서버가 LAN IP 자동 검출, 오프라인 동작).
 - QR 클릭/🔍 버튼 → **별도 창**으로 큰 QR (운영자 화면·송출을 계속 쓰면서 열어둘 수 있음).
 - 교인은 같은 와이파이에서 QR 스캔 → `/m` 에서 자기 언어 선택.
 
-### 6-9. 사용량 배지
+### 6-10. 사용량 배지
 - 상단에 **경과시간·예상비용**(온라인) 표시. **무발화 5분 경과 시 경고** — 끄는 걸 잊어
   비용이 쌓이는 것을 방지.
 
@@ -174,6 +187,7 @@ BACKEND=local ./start.sh
 | `STT_MODEL` | `Qwen/Qwen3-ASR-0.6B`(빠름·권장) / `1.7B` |
 | `STT_MIN_SILENCE_SEC` | 발화를 끊는 침묵 길이(기본 0.9). **높이면 문장 중간 마침표↓·지연↑**(1.2~1.5) |
 | `STT_MAX_SEGMENT_SEC` | 쉼 없이 길 때 강제 분할(기본 8초). 낮추면 더 빨리 전사 |
+| `STT_MAX_JOIN_SEGMENTS` | 강제 분할된 조각을 몇 개까지 모아 번역할지(기본 2). **문맥이 이어져 번역이 정확**해지지만 자막이 조금 늦음. `0` 이면 조각 단위로 즉시 번역 |
 | `STT_SILENCE_RMS` | 침묵 음량 임계값. 말해도 안 뜨면 낮추고(0.008), 잡음 반응하면 높임(0.025) |
 
 **운영 팁**: 로컬은 **또렷한 단문 + 문장 끝 짧은 멈춤**일 때 가장 정확합니다. 반복되는 특정

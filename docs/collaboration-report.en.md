@@ -110,9 +110,9 @@ If an agent stops abruptly, one line from the user is enough:
 | Area | State |
 |---|---|
 | Features | **Production-usable**: online/offline dual track, 1–3 languages, mobile subtitles & QR, script correction |
-| Tests | **60 passing** — 20 unit + 11 WS/auth + 8 abuse-limit + 10 style + 11 info-exposure |
+| Tests | **67 passing** — 20 unit + 11 WS/auth + 8 abuse-limit + 10 style + 11 info-exposure + 7 VAD-join |
 | Docs | README · setup-guide · troubleshooting · handover · analysis (KO/EN) |
-| Security | **C-1·C-2·H-1·H-3·H-4·M-1·M-2·M-3·L-1 done**. Remaining: H-2 (HTTPS/WSS), M-5 (lockfile) |
+| Security | **C-1·C-2·H-1·H-3·H-4·M-1·M-2·M-3·M-5·L-1 done**. Remaining: H-2 (HTTPS/WSS) — only needed if exposed publicly |
 | Deployment | LAN-only assumption. `main` is stable; features go on branches then merge |
 
 ---
@@ -300,6 +300,39 @@ fails 2, L-1 fails 4. Total **60 passed**.
 
 ---
 
+### 3.6 M-5 lockfile · mobile accessibility · VAD re-assembly (2026-07-08, Agent B)
+
+**M-5 dependency pinning + vulnerability scan — found and fixed real CVEs.**
+```
+pip-audit → Found 3 known vulnerabilities in 1 package
+  pyasn1 0.6.3  PYSEC-2026-3455 / 3456 / 3457  (fix: 0.6.4)
+→ upgraded to 0.6.4, rescan: No known vulnerabilities found ✅
+→ full test suite still passes (no regression)
+```
+- Created `requirements.lock` (73 pinned) — use it in production for a reproducible set.
+- Documented lockfile usage and `pip-audit` in `requirements.txt`.
+- Pinned `pyasn1>=0.6.4` (indirect dependency, but it had the CVEs).
+
+**Mobile accessibility (`/m`)** — for senior attendees.
+- Top bar: **`A−` / `A+`** (3 text sizes: 1 / 1.3 / 1.6×), **`◐`** (high contrast: white bg, black text)
+- Choices persist in `localStorage`. Implemented via a CSS variable (`--scale`) so the existing
+  vw-based responsive sizing still works.
+
+**VAD sentence re-assembly** — when the 8-second force-cut split a sentence, fragments were
+translated separately, breaking context and causing mistranslations. Now fragments are
+**joined until the sentence ends** and translated once.
+- Flush immediately (to avoid subtitle lag) when: ends with sentence punctuation / the cut came
+  from silence (likely a sentence end) / `STT_MAX_JOIN_SEGMENTS` (default 2) reached.
+- **The Korean display still updates per fragment** for responsiveness — only translation waits.
+- Set `STT_MAX_JOIN_SEGMENTS=0` to restore the old behavior if latency matters more.
+- Tests: `tests/test_vad_join.py` (7, the flush rules). Total **67 passed**.
+
+**Environment note**: after a USB re-plug the audio device **index changed 2→4**, so the local
+backend failed to start. Fixed by setting `.env` to the device **name**
+(`AUDIO_INPUT_DEVICE=Vocaster Two USB`). Prefer names — indices shift on re-connect.
+
+---
+
 ## 4. Work Board
 
 Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (intentional)
@@ -316,7 +349,7 @@ Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (inten
 | M-1 | Send internal info in `init` only after auth | 🟢 Done | Agent B | 2026-07-08 · split public init / operator_init |
 | M-2 | Whitelist-validate `set_style` | 🟢 Done | Agent B | 2026-07-08 · keys/types/ranges/color format, mutation-verified |
 | M-3 | `/qr.svg` length limit | 🟢 Done | Agent B | 2026-07-08 · 512-char cap (400 over) |
-| M-5 | Dependency lockfile + pip-audit | 🔴 Not started | — | |
+| M-5 | Dependency lockfile + pip-audit | 🟢 Done | Agent B | 2026-07-08 · **found & fixed 3 real CVEs** (pyasn1) |
 | L-1 | Security headers middleware | 🟢 Done | Agent B | X-Frame-Options·nosniff·Referrer-Policy |
 | L-2–3 | Endpoint exposure · script length | ⚪ Deferred | — | Script length covered by H-4; /health acceptable on LAN |
 
@@ -328,7 +361,7 @@ Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (inten
 | High | Persist mobile language choice (localStorage) | 🟢 Done | Agent B (2026-07-08) |
 | Medium | First-run onboarding (3-step mini guide) | 🔴 Not started | — |
 | Medium | Stronger WS connection-state badge | 🔴 Not started | — |
-| Medium | Mobile accessibility (font size / contrast) | 🔴 Not started | — |
+| Medium | Mobile accessibility (font size / contrast) | 🟢 Done | Agent B (2026-07-08) |
 | Low | Presets / show original text toggle | 🔴 Not started | — |
 
 ### 4.3 Quality & tech debt (analysis-report §8)
@@ -342,7 +375,7 @@ Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (inten
 ### 4.4 Feature improvements (handover §9)
 | Item | Status | Notes |
 |---|---|---|
-| VAD sentence re-assembly (accuracy↑) | 🔴 Not started | Gather force-cut fragments until sentence end |
+| VAD sentence re-assembly (accuracy↑) | 🟢 Done | Agent B · 2026-07-08, STT_MAX_JOIN_SEGMENTS=2 (0 disables) |
 | i18n locale file split | 🔴 Not started | When 3+ UI languages |
 | Logs → SQLite + review UI | 🔴 Not started | Currently JSONL |
 | STT acceleration (draft model) | 🔴 Not started | |
@@ -397,6 +430,7 @@ Recently modified files and **cautions**. Leave a note in section 6 before touch
 |---|---|---|
 | 2026-07-08 | Claude (Agent B) | Created. Recorded security phase 1, work board, file ownership, handover notes |
 | 2026-07-08 | Claude (Agent B) | **Added interruption protocol (0.1) + Live Work Log (§8)** — closes the gap where usage limits/crashes leave no record |
+| 2026-07-08 | Claude (Agent B) | **M-5 · mobile accessibility · VAD re-assembly done** (§3.6) — 3 pyasn1 CVEs fixed, lockfile, a11y UI, sentence joining + 7 tests (67 total) |
 | 2026-07-08 | Claude (Agent B) | **M-1·M-3·L-1 done** (§3.5) — init split, QR cap, security headers, 11 tests (60 total) |
 | 2026-07-08 | Claude (Agent B) | **M-2 & mobile language persistence done** (§3.4) — style whitelist + localStorage, 10 tests (49 total) |
 | 2026-07-08 | Claude (Agent B) | **H-3 & H-4 done** (§3.3) — cooldown + script/connection/message caps + 8 tests (mutation-verified), 39 passing |
