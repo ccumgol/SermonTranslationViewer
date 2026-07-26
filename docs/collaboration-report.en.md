@@ -19,8 +19,14 @@
    verified it**. (Don't just claim it works — state what you ran.)
 3. **File conflicts**: check "File ownership" in section 5. If you'll touch a file another
    agent is working on, leave a note in section 6 first.
-4. **Commit policy**: in this project **the user (owner) commits.** Agents modify code/docs
-   but do not commit or push (only on explicit request).
+4. **Commit policy (changed 2026-07-08)**: agents **commit and push directly** when work is done.
+   - Commit in logical units (split mixed concerns); messages state **cause, action, verification**.
+   - ⚠️ **Check for secrets before pushing**: run `git diff --name-only origin/main..HEAD` and
+     confirm no `.env`, tokens, or `data/` files are included. (See incident §3.2)
+   - On push rejection, `git pull --rebase` and retry (concurrent agents).
+   - **History rewrites (force push, filter-repo) require user approval** — they can break
+     other agents' work.
+   - (The previous policy was "the user commits"; now automated.)
 5. **Write "recovery info" when you START** (⚠️ most important — see 0.1 below).
    Usage limits and crashes arrive without warning, so **notes written only at the end never get written.**
 
@@ -90,7 +96,7 @@ If an agent stops abruptly, one line from the user is enough:
 
 | Participant | Responsibility / contribution | Last active |
 |---|---|---|
-| **User (owner)** | Requirements, real-device testing, **commit/push authority**, billing & API keys | Ongoing |
+| **User (owner)** | Requirements & prioritization, real-device testing, billing & API keys, direction approval | Ongoing |
 | **Agent A** (analysis) | In-depth codebase analysis → [analysis-report.en.md](analysis-report.en.md) (found 2 CRITICAL security issues) | 2026-07-07 |
 | **Agent B / Claude** (implementation) | Initial full implementation + documentation; verified analysis findings and implemented **security hardening phase 1** | 2026-07-08 |
 
@@ -147,15 +153,12 @@ Unit tests            : ✅ 20 passed
 2. **Origin rule = "same as the Host the browser connected to"** — so phones opening `/m`
    via the LAN IP keep working. Use `ALLOWED_ORIGINS` for proxies/other domains.
 3. `WS_HOST=127.0.0.1` (local-only) **does not generate a token** — no exposure, no friction.
-4. Token file excluded via `.gitignore` (`data/runtime/`).
+4. The token file was later moved **outside the repo** ($TMPDIR) — see incident §3.2.
 
-### Uncommitted state (user will commit)
-```
-M .env.example   M .gitignore   M README.md
-M server/config.py   M server/ws_server.py   M start.sh
-?? docs/analysis-report.md, .en.md   (Agent A's output — left untouched)
-?? data/runtime/   (git-ignored)
-```
+### Commit status
+Security phase 1 landed in commit `a3f4fe0` (committed by the user). Follow-up work was pushed as
+`a8ae88d` (token-file incident fix) · `de0f376` (security tests) · `5c52954` (collaboration report).
+`docs/analysis-report.md/.en.md` are Agent A's output and were not modified by Agent B.
 
 ---
 
@@ -305,6 +308,7 @@ Recently modified files and **cautions**. Leave a note in section 6 before touch
 |---|---|---|
 | 2026-07-08 | Claude (Agent B) | Created. Recorded security phase 1, work board, file ownership, handover notes |
 | 2026-07-08 | Claude (Agent B) | **Added interruption protocol (0.1) + Live Work Log (§8)** — closes the gap where usage limits/crashes leave no record |
+| 2026-07-08 | Claude (Agent B) | **Commit policy changed**: agents now commit/push directly (secret check required before push) |
 | 2026-07-08 | Claude (Agent B) | **Incident §3.2**: token file was committed to the public repo → untracked, gitignore fixed, token file moved outside the repo |
 | 2026-07-08 | Claude (Agent B) | **Added 11 WS/auth integration tests** (§3.1) — mutation-tested. 31 total passing. Updated §2, board 4.3, handover notes |
 
