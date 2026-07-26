@@ -170,11 +170,20 @@ def input_devices() -> list[dict]:
     devices = []
     for index, dev in enumerate(sd.query_devices()):
         if dev.get("max_input_channels", 0) > 0:
+            # 가상 오디오 장치(BlackHole 등)는 '컴퓨터에서 나는 소리'를 캡처할 수
+            # 있으므로 운영자가 알아볼 수 있게 표시한다(유튜브 영상 번역 등에 사용).
+            lowered = dev["name"].lower()
+            is_loopback = any(
+                key in lowered
+                for key in ("blackhole", "loopback", "soundflower", "vb-audio",
+                            "virtual", "aggregate", "stereo mix", "what u hear")
+            )
             devices.append(
                 {
                     "index": index,
                     "name": dev["name"],
                     "channels": dev["max_input_channels"],
+                    "system_audio": is_loopback,
                 }
             )
     return devices

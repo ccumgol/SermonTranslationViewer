@@ -436,7 +436,9 @@ async def pipeline(settings: Settings) -> None:
     state.last_speech_at = time.monotonic()
     state.logger = TranscriptLogger.maybe_create()
     if state.logger is not None:
-        print(f"[server] 전사 로깅 ON → {state.logger.path}")
+        print(f"[server] 전사 기록 ON → {state.logger.text_path}")
+        print("          (읽기 쉬운 .txt + 기계판독 .jsonl 동시 저장 · "
+              "끄려면 .env 에 LOG_TRANSCRIPTS=0)")
     # 저장된 설교 원고가 있으면 불러와 교정 용어 준비
     if SCRIPT_PATH.exists():
         n = state.script.set_script(SCRIPT_PATH.read_text(encoding="utf-8"))

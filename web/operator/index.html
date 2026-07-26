@@ -239,6 +239,8 @@
         devRefreshed: "목록을 새로고침했습니다.", devSwitched: "입력 장치를 전환했습니다 →", devError: "⚠ 장치 전환 실패:", tokenHint: "주소에 ?token=… 을 붙여 여세요.",
         mobileTitle: "모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기", extractMobile: "📱 모바일 주소 / QR 추출",
         throttled: "너무 빠릅니다 — 잠시 후 다시 시도하세요", scriptTruncated: "원고가 너무 길어 앞부분만 적용했습니다",
+        systemAudio: "컴퓨터 소리",
+        authBanner: "⚠ 이 주소의 운영자 토큰이 만료되었습니다 (예: 예전에 열어둔 탭). 서버를 실행한 터미널에 표시된 주소로 다시 접속하세요.",
         detecting: "주소 확인 중…", mobileHint: "폰을 같은 와이파이에 연결한 뒤 QR을 스캔하거나 주소를 입력하세요.", otherAddrs: "다른 주소 후보:", mobileFail: "⚠ 주소 확인 실패", enlarge: "🔍 QR 크게 보기", closeHint: "아무 곳이나 클릭(또는 Esc)하면 닫힙니다",
       },
       en: {
@@ -274,6 +276,8 @@
         devRefreshed: "Device list refreshed.", devSwitched: "Input device switched →", devError: "⚠ Device switch failed:", tokenHint: "add ?token=… to the URL.",
         mobileTitle: "Mobile subtitle URL (for attendees) — read subtitles in your language on your phone", extractMobile: "📱 Get mobile URL / QR",
         throttled: "Too fast — please retry shortly", scriptTruncated: "Script too long; only the beginning was applied",
+        systemAudio: "system audio",
+        authBanner: "⚠ The operator token in this URL is no longer valid (e.g. an old tab). Open the URL printed in the terminal where the server is running.",
         detecting: "Detecting address…", mobileHint: "Connect your phone to the same Wi-Fi, then scan the QR or type the URL.", otherAddrs: "Other candidates:", mobileFail: "⚠ Failed to detect address", enlarge: "🔍 Enlarge QR", closeHint: "Click anywhere (or Esc) to close",
       },
     };
@@ -325,6 +329,18 @@
       } else {
         badge.textContent = t("badgeUnknown"); badge.style.background = "#5a2327";
       }
+    }
+
+    // 인증 실패 배너 — 원인(옛 토큰)과 해결법을 분명히 보여준다
+    function showAuthBanner() {
+      if (document.getElementById("auth-banner")) return;
+      const b = document.createElement("div");
+      b.id = "auth-banner";
+      b.style = "position:fixed; top:0; left:0; right:0; z-index:2000; padding:14px 18px;" +
+        "background:#7a2f35; color:#fff; font-weight:600; text-align:center; line-height:1.5;";
+      b.textContent = t("authBanner");
+      document.body.appendChild(b);
+      document.body.style.paddingTop = "72px";
     }
 
     function fmtDuration(sec) {
@@ -392,7 +408,8 @@
       (devices || []).forEach((d) => {
         const opt = document.createElement("option");
         opt.value = d.index;
-        opt.textContent = `[${d.index}] ${d.name} (${d.channels}ch in)`;
+        const sysTag = d.system_audio ? ` 🔊 ${t("systemAudio")}` : "";
+        opt.textContent = `[${d.index}] ${d.name} (${d.channels}ch in)${sysTag}`;
         if (current != null && String(current) === String(d.index)) opt.selected = true;
         deviceSelect.appendChild(opt);
       });
@@ -660,6 +677,9 @@
             tmsg(document.getElementById("backend-msg"), () => "⚠ " + msg.message);
             break;
           case "auth_error":
+            // 토큰이 무효면(예: 예전 탭의 옛 토큰) 장치 목록·백엔드 배지가 비어
+            // "기능이 사라진 것처럼" 보이므로, 원인과 조치를 크게 안내한다.
+            showAuthBanner();
             tmsg(document.getElementById("backend-msg"),
               () => "⚠ " + msg.message + " " + t("tokenHint"));
             break;

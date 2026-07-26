@@ -358,6 +358,41 @@ headers with `curl -sI`. Fixing it **server-side** beats asking users to hard-re
 
 ---
 
+### 3.8 ⚠️ Real cause: auto token changed on every restart (2026-07-08, fixed)
+
+After the §3.7 cache fix, the **device selector stayed empty and the backend toggle was still
+missing**. Re-diagnosis showed the cause was **not caching but the token**.
+
+**How it was narrowed down (no guessing)**
+1. Checked the server directly over WebSocket → `operator_init` (devices=6, backend=local) arrived fine.
+2. Opened the latest tokenized URL in a real browser → **worked** (6 devices, badge shown).
+3. The two user screenshots had **different tokens** (`a8gBuEv8…` → `E1sBjShyz…`)
+   → the token was **regenerated on every restart**, invalidating already-open tabs.
+4. Reproduced with an old token → `auth_error` → no `operator_init` → empty device list.
+   **Exactly the reported symptom.**
+
+**Fix**
+- Persist the auto-generated token (`$TMPDIR/translateviewer/operator_token`, mode 600) and
+  reuse it across restarts, so open tabs/bookmarks stay valid. Verified: same token before/after restart.
+- Show a **large red banner** explaining the cause and the fix when the token is invalid
+  (previously only a small warning that was easy to miss).
+
+**Lesson**: when told "still broken after your fix", don't assume your change caused it —
+**reproduce the symptom from scratch**. §3.7 (caching) was a real issue, but not the cause here.
+
+### 3.9 Requested features: system audio · automatic transcript saving (2026-07-08)
+
+- **System sound input**: already possible via virtual devices (BlackHole etc.), but hard to
+  recognize — the device list now marks them **🔊 system audio** (`system_audio` flag).
+  Useful for testing with YouTube videos.
+- **Automatic transcript saving**: `LOG_TRANSCRIPTS` now defaults to **on** (the user judged
+  transcription quality more critical than translation). Two formats are written:
+  - `data/logs/sermon-<time>.txt` — human-readable `[10:56:21] (한국어) …`
+  - `data/logs/sermon-<time>.jsonl` — machine-readable
+  The path is printed at startup. Disable with `LOG_TRANSCRIPTS=0`.
+
+---
+
 ## 4. Work Board
 
 Status: 🔴 Not started · 🟡 In progress · 🟢 Done · ⚪ Deferred (intentional)
@@ -455,6 +490,8 @@ Recently modified files and **cautions**. Leave a note in section 6 before touch
 |---|---|---|
 | 2026-07-08 | Claude (Agent B) | Created. Recorded security phase 1, work board, file ownership, handover notes |
 | 2026-07-08 | Claude (Agent B) | **Added interruption protocol (0.1) + Live Work Log (§8)** — closes the gap where usage limits/crashes leave no record |
+| 2026-07-08 | Claude (Agent B) | **Real fix (§3.8)**: auto token regenerated on every restart → persisted & reused, plus auth banner |
+| 2026-07-08 | Claude (Agent B) | **Requested features (§3.9)**: system-audio device tagging, transcript saving on by default |
 | 2026-07-08 | Claude (Agent B) | **Regression fix (§3.7)**: cached HTML hid device select & backend toggle → no-store, 5 tests (72 total) |
 | 2026-07-08 | Claude (Agent B) | **M-5 · mobile accessibility · VAD re-assembly done** (§3.6) — 3 pyasn1 CVEs fixed, lockfile, a11y UI, sentence joining + 7 tests (67 total) |
 | 2026-07-08 | Claude (Agent B) | **M-1·M-3·L-1 done** (§3.5) — init split, QR cap, security headers, 11 tests (60 total) |
