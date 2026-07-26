@@ -48,3 +48,40 @@ def test_sanitize_languages_empty_defaults_to_en():
 
     out = _sanitize_languages([])
     assert out == [{"code": "en", "color": out[0]["color"]}]
+
+
+# ── 자동 운영자 토큰: 재시작해도 유지되어야 열어둔 탭이 안 깨진다 ──
+# monkeypatch 로 토큰 파일을 임시 경로로 돌려 실제 $TMPDIR 파일은 건드리지 않는다.
+
+
+def test_토큰_없으면_새로_생성하고_저장한다(monkeypatch, tmp_path):
+    import config
+
+    monkeypatch.setattr(config, "_TOKEN_FILE", tmp_path / "operator_token")
+    token, reused = config._load_or_create_token()
+    assert reused is False           # 새로 만든 것
+    assert len(token) >= 16
+    assert (tmp_path / "operator_token").read_text().strip() == token  # 저장됨
+
+
+def test_토큰_파일있으면_같은값_재사용한다(monkeypatch, tmp_path):
+    import config
+
+    monkeypatch.setattr(config, "_TOKEN_FILE", tmp_path / "operator_token")
+    first, first_reused = config._load_or_create_token()
+    second, second_reused = config._load_or_create_token()
+    assert first_reused is False     # 1회차: 신규
+    assert second_reused is True     # 2회차: 재사용
+    assert second == first, "재시작해도 토큰이 유지돼야 열어둔 운영자 탭이 안 깨진다"
+
+
+def test_짧은_토큰파일은_무시하고_새로_만든다(monkeypatch, tmp_path):
+    """손상되거나 너무 짧은(≥16자 미만) 파일은 재사용하지 않는다."""
+    import config
+
+    tf = tmp_path / "operator_token"
+    tf.write_text("short")
+    monkeypatch.setattr(config, "_TOKEN_FILE", tf)
+    token, reused = config._load_or_create_token()
+    assert reused is False
+    assert len(token) >= 16

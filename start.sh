@@ -30,6 +30,42 @@ PORT="$(grep -E '^WS_PORT=' .env 2>/dev/null | tail -1 | cut -d= -f2 | tr -d ' '
 PORT="${PORT:-8000}"
 OP_URL="http://localhost:${PORT}/operator"
 
+# 포트가 이미 사용 중이면(기존 서버가 살아있으면) 새 서버는 'address already in
+# use' 로 조용히 실패한다(자주 겪는 함정). 미리 감지해 물어보고, 동의 시 기존 서버를
+# 종료한 뒤 진행한다. lsof 가 없으면 이 검사는 건너뛴다.
+if command -v lsof >/dev/null 2>&1; then
+  EXISTING_PID="$(lsof -ti:"${PORT}" -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -n "${EXISTING_PID}" ]; then
+    echo "⚠ 포트 ${PORT} 에서 이미 서버가 실행 중입니다 (PID: ${EXISTING_PID//$'\n'/ })."
+    echo "   그대로 새로 시작하면 포트 충돌로 실패합니다."
+    printf "   기존 서버를 종료하고 새로 시작할까요? [y/N] "
+    read -r ANS || ANS=""
+    case "${ANS}" in
+      [yY] | [yY][eE][sS])
+        echo "   기존 서버 종료 중…"
+        # shellcheck disable=SC2086
+        kill ${EXISTING_PID} 2>/dev/null || true
+        for _ in $(seq 1 10); do   # 포트가 풀릴 때까지 최대 ~5초 대기
+          lsof -ti:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1 || break
+          sleep 0.5
+        done
+        STILL="$(lsof -ti:"${PORT}" -sTCP:LISTEN 2>/dev/null || true)"
+        if [ -n "${STILL}" ]; then
+          echo "   정상 종료가 안 돼 강제 종료합니다."
+          # shellcheck disable=SC2086
+          kill -9 ${STILL} 2>/dev/null || true
+          sleep 0.5
+        fi
+        echo "   완료. 새 서버를 시작합니다."
+        ;;
+      *)
+        echo "   취소했습니다. 기존 서버를 그대로 사용하세요: ${OP_URL}"
+        exit 0
+        ;;
+    esac
+  fi
+fi
+
 echo "🎤 설교 실시간 자막 서버 시작…"
 echo "   송출 화면:   http://localhost:${PORT}/"
 echo "   운영자 화면: ${OP_URL}"
