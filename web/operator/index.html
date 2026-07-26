@@ -626,19 +626,27 @@
         const msg = JSON.parse(e.data);
         switch (msg.type) {
           case "init":
+            // 공용 초기 상태(인증 없이도 받는 값)
             outputEnabled = msg.output_enabled;
+            refreshOutputBtn();
+            syncStyleInputs(msg.style);
+            allLanguages = msg.languages || [];
+            applyLayout(msg.layout || []);
+            // 운영자 전용 정보는 인증 후 별도로 오므로(operator_init),
+            // 여기서 한 번 요청을 보내 인증을 트리거한다(무해한 명령 사용).
+            send({ cmd: "list_devices" });
+            break;
+          case "operator_init":
+            // 인증 확인 후 도착하는 내부 정보(장치·백엔드·원고 등)
             broadcasting = msg.broadcasting !== false;
             applyBackendBadge(msg.backend);
-            refreshOutputBtn();
             refreshBroadcastBtn();
-            syncStyleInputs(msg.style);
             populateDevices(msg.devices, msg.current_device);
             if (msg.script_terms > 0)
               tmsg(scriptMsg, () => `${t("scriptSaved")} ${msg.script_terms}`);
-            allLanguages = msg.languages || [];
             defaultColors = msg.default_colors || defaultColors;
             maxLanguages = msg.max_languages || 3;
-            applyLayout(msg.layout || []);
+            applyLayout(lastLayout);   // 슬롯 색상 기본값 반영해 다시 그림
             break;
           case "layout":
             tmsg(languageMsg, () => t("applied"));

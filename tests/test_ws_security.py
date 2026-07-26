@@ -41,9 +41,16 @@ def client(monkeypatch):
 
 
 def _cmd(ws, cmd: dict) -> dict:
-    """명령을 보내고 첫 응답을 받는다(init 은 이미 소비한 상태)."""
+    """명령을 보내고 첫 '의미 있는' 응답을 받는다(init 은 이미 소비한 상태).
+
+    인증이 처음 확인될 때 서버가 operator_init(내부정보)을 먼저 보내므로 건너뛴다.
+    """
     ws.send_json(cmd)
-    return ws.receive_json()
+    for _ in range(4):
+        msg = ws.receive_json()
+        if msg.get("type") != "operator_init":
+            return msg
+    return msg
 
 
 # ── C-1: Origin 검증 ────────────────────────────────────────────

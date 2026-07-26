@@ -78,6 +78,8 @@ MAX_SCRIPT_CHARS = int(os.getenv("MAX_SCRIPT_CHARS", "100000"))
 _HEX_COLOR_RE = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
 # 동시 WebSocket 연결 상한(교인 폰 다수 접속 고려)
 MAX_WS_CLIENTS = int(os.getenv("MAX_WS_CLIENTS", "100"))
+# QR 텍스트 최대 길이(M-3) — 임의 QR 생성 오픈프록시·DoS 방지. URL 용도로 충분.
+MAX_QR_TEXT_CHARS = int(os.getenv("MAX_QR_TEXT_CHARS", "512"))
 # WebSocket 메시지 크기 상한(바이트) — 원고 10만 자(UTF-8 최대 3바이트) + 여유
 WS_MAX_MESSAGE_BYTES = int(os.getenv("WS_MAX_MESSAGE_BYTES", str(512 * 1024)))
 
@@ -539,6 +541,21 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+@app.middleware("http")
+async def _security_headers(request, call_next):  # noqa: ANN001, ANN201
+    """기본 보안 헤더(L-1).
+
+    - X-Frame-Options: 다른 사이트가 이 화면을 iframe 으로 감싸 오조작을 유도하는 것을 막음
+    - X-Content-Type-Options: MIME 스니핑 방지
+    - Referrer-Policy: 토큰이 담긴 URL 이 외부로 새어나가지 않도록 최소화
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
+
+
 @app.get("/")
 async def overlay() -> FileResponse:
     return FileResponse(WEB_DIR / "subtitle-overlay" / "index.html")
@@ -628,10 +645,20 @@ async def lan_info() -> dict:
 
 @app.get("/qr.svg")
 async def qr_svg(text: str) -> Response:
-    """주어진 텍스트(URL)의 QR 코드를 SVG 로 생성해 반환 (로컬 생성, 인터넷 불필요)."""
+    """주어진 텍스트(URL)의 QR 코드를 SVG 로 생성해 반환 (로컬 생성, 인터넷 불필요).
+
+    M-3: 길이 상한을 둔다. 상한이 없으면 임의 텍스트로 QR 을 대량 생성하게 만들어
+    (오픈프록시처럼 악용) CPU 를 소모시킬 수 있다.
+    """
     import io
 
     import segno
+
+    if not text or len(text) > MAX_QR_TEXT_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"text 는 1~{MAX_QR_TEXT_CHARS}자여야 합니다.",
+        )
 
     buf = io.BytesIO()
     segno.make(text, error="m").save(buf, kind="svg", scale=6, border=2, dark="#000", light="#fff")
@@ -764,6 +791,35 @@ async def _switch_device(device) -> None:  # noqa: ANN001
         await hub.broadcast({"type": "device_error", "message": str(exc)})
 
 
+def _public_init() -> dict:
+    """인증 없이 보내도 안전한 초기 상태(송출 화면·교인 폰이 쓰는 필드만).
+
+    M-1: 예전에는 장치 목록·백엔드·용어 개수까지 모두 보냈는데, 이는 주소만 아는
+    사람에게 내부 구성을 노출한다. 화면 동작에 필요한 값만 남긴다.
+    """
+    return {
+        "type": "init",
+        "style": state.style,
+        "output_enabled": state.output_enabled,
+        "layout": state.layout(),
+        "languages": LANGUAGES,      # 선택 가능한 언어 목록(모바일에서 표시)
+    }
+
+
+def _operator_init() -> dict:
+    """운영자 인증 후에만 보내는 내부 정보(장치명·백엔드·원고 등)."""
+    return {
+        "type": "operator_init",
+        "broadcasting": state.broadcasting,
+        "backend": state.backend.name if state.backend else "unknown",
+        "default_colors": DEFAULT_COLORS,
+        "max_languages": MAX_LANGUAGES,
+        "devices": input_devices(),
+        "current_device": state.capture.current_device if state.capture else None,
+        "script_terms": len(state.script.terms),
+    }
+
+
 def _origin_allowed(ws: WebSocket) -> bool:
     """WebSocket 핸드셰이크의 Origin 을 검증(CSWSH 방지).
 
@@ -817,28 +873,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     await hub.register(ws)
     auth_failures = 0
-    # 새 연결을 현재 상태로 동기화
-    await ws.send_text(
-        json.dumps(
-            {
-                "type": "init",
-                "style": state.style,
-                "output_enabled": state.output_enabled,
-                "broadcasting": state.broadcasting,
-                "backend": state.backend.name if state.backend else "unknown",
-                "languages": LANGUAGES,          # 선택 가능한 전체 언어
-                "layout": state.layout(),        # 현재 활성 언어(행) 구성
-                "default_colors": DEFAULT_COLORS,
-                "max_languages": MAX_LANGUAGES,
-                "devices": input_devices(),
-                "current_device": (
-                    state.capture.current_device if state.capture else None
-                ),
-                "script_terms": len(state.script.terms),
-            },
-            ensure_ascii=False,
-        )
-    )
+    operator_synced = False
+    # 새 연결을 현재 상태로 동기화.
+    # M-1: 인증 없는 연결(교인 폰·송출 화면)에는 **공용 필드만** 보낸다.
+    #      장치명·백엔드·용어 개수 같은 내부 정보는 운영자 인증 후에 전달한다.
+    await ws.send_text(json.dumps(_public_init(), ensure_ascii=False))
     try:
         while True:
             raw = await ws.receive_text()
@@ -853,6 +892,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 ok = bool(token) and isinstance(supplied, str) and hmac.compare_digest(
                     supplied, token
                 )
+                # 인증이 확인되면(또는 토큰 미사용 환경이면) 운영자 정보를 1회 전달
+                if (ok or not token) and not operator_synced:
+                    operator_synced = True
+                    await ws.send_text(
+                        json.dumps(_operator_init(), ensure_ascii=False)
+                    )
                 if token and not ok:
                     auth_failures += 1
                     await ws.send_text(

@@ -99,8 +99,7 @@ def test_과도하게_긴_원고는_잘려서_적용된다(client, monkeypatch):
     monkeypatch.setattr(ws_server, "MAX_SCRIPT_CHARS", 100)
     with client.websocket_connect("/ws") as ws:
         ws.receive_json()
-        ws.send_json({"cmd": "set_script", "text": "가" * 500, "token": TOKEN})
-        ws.receive_json()  # 첫 응답(script_truncated 또는 script_state)
+        _send(ws, {"cmd": "set_script", "text": "가" * 500})
         # 실제 적용 결과로 검증 — 상한이 동작하지 않으면 500자가 그대로 남는다
         assert len(ws_server.SCRIPT_PATH.read_text(encoding="utf-8")) <= 100
 
@@ -131,7 +130,14 @@ def test_메시지_크기_상한이_설정되어_있다():
 
 
 def _send(ws, cmd: dict) -> dict:
-    """토큰을 붙여 명령을 보내고 첫 응답을 받는다."""
+    """토큰을 붙여 명령을 보내고 첫 '의미 있는' 응답을 받는다.
+
+    인증이 처음 확인될 때 서버가 operator_init(내부정보)을 먼저 보내므로 건너뛴다.
+    """
     cmd.setdefault("token", TOKEN)
     ws.send_json(cmd)
-    return ws.receive_json()
+    for _ in range(4):
+        msg = ws.receive_json()
+        if msg.get("type") != "operator_init":
+            return msg
+    return msg
