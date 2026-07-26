@@ -1,3 +1,9 @@
+# 런타임 의존성 (하한 버전). 정확한 재현이 필요하면 requirements.lock 을 쓰세요:
+#   pip install -r requirements.lock      # 검증된 조합 그대로 설치(권장: 운영 환경)
+#   pip install -r requirements.txt       # 최신 호환 버전으로 설치
+# 취약점 점검:
+#   pip install pip-audit && pip-audit
+
 # Gemini Live API SDK
 google-genai>=1.0.0
 
@@ -14,3 +20,7 @@ python-dotenv>=1.0
 
 # 모바일 주소 QR 코드 생성 (순수 파이썬, 의존성 없음, 오프라인 동작)
 segno>=1.5
+
+# 간접 의존성(google-auth → pyasn1-modules → pyasn1)이지만, 0.6.3 에 알려진
+# 취약점 3건(PYSEC-2026-3455/3456/3457)이 있어 하한을 명시한다.
+pyasn1>=0.6.4
