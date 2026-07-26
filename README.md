@@ -9,6 +9,7 @@
 > 🎓 개발 중 만난 에러와 해결 과정(교육용): [docs/troubleshooting-log.md](docs/troubleshooting-log.md)
 > 🧭 인수인계 보고서(전체 이해·개발 인계): [docs/handover.md](docs/handover.md)
 > 🔍 프로젝트 분석 보고서(보안·편의성 개선 제안): [docs/analysis-report.md](docs/analysis-report.md)
+> 🤝 협력 보고서(작업 보드·진행 상황 공유): [docs/collaboration-report.md](docs/collaboration-report.md)
 
 ## 핵심 기능
 
