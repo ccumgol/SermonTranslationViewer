@@ -289,7 +289,7 @@
         sourceLabel: "한국어 인식 (입력 전사)", targetLabel: "번역 (송출 자막)",
         broadcastStart: "▶ 방송 시작", broadcastStop: "■ 방송 종료",
         outputHide: "⏹ 송출 가리기", outputShow: "▶ 송출 재개",
-        connected: "연결됨", disconnected: "연결 끊김 — 재연결 시도 중",
+        connected: "연결됨", disconnected: "연결 끊김", reconnecting: "재연결 시도 중", serverDown: "서버 응답 없음 — 서버가 실행 중인지 확인하세요",
         langSlotReq: "1번 언어 (필수)", langSlot2: "2번 언어 (선택)", langSlot3: "3번 언어 (선택)",
         langNone: "(사용 안 함)",
         badgeLocal: "🖥 로컬 (오프라인) — 클릭: 온라인 전환",
@@ -331,7 +331,7 @@
         sourceLabel: "Korean recognition (input)", targetLabel: "Translation (output)",
         broadcastStart: "▶ Start broadcast", broadcastStop: "■ Stop broadcast",
         outputHide: "⏹ Hide output", outputShow: "▶ Show output",
-        connected: "Connected", disconnected: "Disconnected — reconnecting",
+        connected: "Connected", disconnected: "Disconnected", reconnecting: "Reconnecting", serverDown: "No response — check the server is running",
         langSlotReq: "Language 1 (required)", langSlot2: "Language 2 (optional)", langSlot3: "Language 3 (optional)",
         langNone: "(none)",
         badgeLocal: "🖥 Local (offline) — click: go online",
@@ -384,10 +384,21 @@
     }
 
     let connected = false;
+    let reconnectAttempts = 0;
     function setConnected(on) {
       connected = on;
       dot.classList.toggle("on", on);
-      connText.textContent = on ? t("connected") : t("disconnected");
+      if (on) {
+        reconnectAttempts = 0;
+        connText.textContent = t("connected");
+      } else if (reconnectAttempts === 0) {
+        connText.textContent = t("disconnected");
+      } else if (reconnectAttempts < 5) {
+        connText.textContent = `${t("reconnecting")} (${reconnectAttempts})`;
+      } else {
+        // 여러 번 실패 = 서버가 꺼졌을 가능성 → 조치 안내
+        connText.textContent = `${t("serverDown")} (${reconnectAttempts})`;
+      }
     }
 
     let currentBackend = null;
@@ -873,7 +884,13 @@
             break;
         }
       };
-      socket.onclose = () => { setConnected(false); setTimeout(connect, 1500); };
+      socket.onclose = () => {
+        reconnectAttempts++;
+        setConnected(false);
+        // 완만한 백오프(최대 6초) — 서버 재시작(수 초)이면 빠르게 다시 붙고,
+        // 완전히 죽었을 땐 과도한 재시도를 줄인다.
+        setTimeout(connect, Math.min(1500 * reconnectAttempts, 6000));
+      };
       socket.onerror = () => socket.close();
     }
     applyI18n();
