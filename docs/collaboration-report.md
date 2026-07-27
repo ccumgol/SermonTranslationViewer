@@ -667,7 +667,7 @@ address already in use` 로 조용히 실패(세 번 연속 실패 로그 확인
   3) 입력 게인 슬라이더 (audio_input 소프트웨어 증폭 + 운영자 UI + WS 명령) — too_quiet 완결
   4) WS 재연결/연결상태 강화 (operator/mobile JS)
   원칙: 순수 개선, 온/오프 대칭, 테스트 통과, 회귀 시 롤백. 순서 1→2→3→4.
-  진행: 1) stop.sh ✅ 완료·커밋(README 반영) / 2) 무발화 자동종료 ⏳ 다음 / 3) 게인 / 4) 재연결
+  진행: 1) stop.sh ✅ / 2) 무발화 자동종료 ✅(IDLE_STOP_MIN, 94 passed) / 3) 게인 ⏳ 다음 / 4) 재연결
 ```
 
 ### 다음 세션 착수 예정 — 코드 품질 2단계: ws_server.py 모듈 분리 ★인계

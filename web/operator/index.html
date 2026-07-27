@@ -294,6 +294,7 @@
         devRefreshed: "목록을 새로고침했습니다.", devSwitched: "입력 장치를 전환했습니다 →", devError: "⚠ 장치 전환 실패:", tokenHint: "주소에 ?token=… 을 붙여 여세요.",
         mobileTitle: "모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기", extractMobile: "📱 모바일 주소 / QR 추출",
         throttled: "너무 빠릅니다 — 잠시 후 다시 시도하세요", scriptTruncated: "원고가 너무 길어 앞부분만 적용했습니다",
+        autoStopped: "⏹ 무발화가 길어 방송을 자동 종료했습니다. 다시 시작하려면 ▶ 방송 시작을 누르세요.",
         systemAudio: "컴퓨터 소리",
         authBanner: "⚠ 이 주소의 운영자 토큰이 만료되었습니다 (예: 예전에 열어둔 탭). 서버를 실행한 터미널에 표시된 주소로 다시 접속하세요.",
         detecting: "주소 확인 중…", mobileHint: "폰을 같은 와이파이에 연결한 뒤 QR을 스캔하거나 주소를 입력하세요.", otherAddrs: "다른 주소 후보:", mobileFail: "⚠ 주소 확인 실패", enlarge: "🔍 QR 크게 보기", closeHint: "아무 곳이나 클릭(또는 Esc)하면 닫힙니다",
@@ -335,6 +336,7 @@
         devRefreshed: "Device list refreshed.", devSwitched: "Input device switched →", devError: "⚠ Device switch failed:", tokenHint: "add ?token=… to the URL.",
         mobileTitle: "Mobile subtitle URL (for attendees) — read subtitles in your language on your phone", extractMobile: "📱 Get mobile URL / QR",
         throttled: "Too fast — please retry shortly", scriptTruncated: "Script too long; only the beginning was applied",
+        autoStopped: "⏹ Broadcast auto-stopped after a long silence. Press ▶ Start to resume.",
         systemAudio: "system audio",
         authBanner: "⚠ The operator token in this URL is no longer valid (e.g. an old tab). Open the URL printed in the terminal where the server is running.",
         detecting: "Detecting address…", mobileHint: "Connect your phone to the same Wi-Fi, then scan the QR or type the URL.", otherAddrs: "Other candidates:", mobileFail: "⚠ Failed to detect address", enlarge: "🔍 Enlarge QR", closeHint: "Click anywhere (or Esc) to close",
@@ -809,6 +811,9 @@
             tmsg(scriptMsg, () => msg.terms > 0
               ? `${t("scriptApplied")} ${msg.terms}`
               : t("scriptNone"));
+            break;
+          case "auto_stopped":
+            tmsg(languageMsg, () => t("autoStopped"));   // 다음 상태 메시지 전까지 유지
             break;
           case "broadcast_state":
             broadcasting = msg.active;

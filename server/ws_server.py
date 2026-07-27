@@ -74,6 +74,9 @@ COST_PER_MIN = float(os.getenv("COST_PER_MIN", "0.037"))
 LEVEL_PUSH_SEC = float(os.getenv("LEVEL_PUSH_SEC", "0.2"))
 # 무발화 이 시간(분) 이상이면 "끄는 걸 잊지 않았나요?" 경고
 IDLE_WARN_MIN = float(os.getenv("IDLE_WARN_MIN", "5"))
+# 무발화 이 시간(분) 이상이면 방송을 '자동 종료'해 온라인 비용을 막는다.
+# 0=비활성(기본). 예배 중 오종료를 막기 위해 기본은 꺼두고, 켤 때도 넉넉히 잡는다.
+IDLE_STOP_MIN = float(os.getenv("IDLE_STOP_MIN", "0"))
 # 한 WebSocket 연결에서 허용하는 인증 실패 횟수(초과 시 연결 종료 — 브루트포스 차단)
 MAX_AUTH_FAILURES = 5
 
@@ -415,6 +418,7 @@ async def set_broadcast(active: bool) -> None:
         return
     if active:
         state.broadcasting = True
+        state.last_speech_at = time.monotonic()  # 재시작 시 무발화 타이머 리셋(즉시 재종료 방지)
         langs = state.languages or [
             {"code": state.settings.target_language, "color": DEFAULT_COLORS[0]}
         ]
@@ -561,6 +565,14 @@ async def _level_heartbeat() -> None:
         )
 
 
+def _should_auto_stop(idle_sec: float, broadcasting: bool) -> bool:
+    """무발화가 IDLE_STOP_MIN(분)을 넘고 방송 중이면 자동 종료 대상.
+
+    IDLE_STOP_MIN=0 이면 항상 False(기능 비활성, 기본값).
+    """
+    return IDLE_STOP_MIN > 0 and broadcasting and idle_sec >= IDLE_STOP_MIN * 60
+
+
 async def _usage_heartbeat() -> None:
     """주기적으로 경과시간·예상비용·무발화 상태를 운영자 화면에 push."""
     while True:
@@ -581,6 +593,14 @@ async def _usage_heartbeat() -> None:
                 "idle_warn": idle >= IDLE_WARN_MIN * 60,
             }
         )
+        # 무발화 자동 방송 종료(옵션) — 끄는 걸 잊어 온라인 비용이 쌓이는 것을 막는다.
+        if _should_auto_stop(idle, state.broadcasting):
+            async with state.reconfig_lock:   # 다른 재구성과 경합 방지
+                # 잠금 획득 사이에 발화가 있었을 수 있으니 다시 판정한다.
+                if _should_auto_stop(time.monotonic() - state.last_speech_at, state.broadcasting):
+                    log.info("무발화 %.1f분 초과 — 방송 자동 종료(IDLE_STOP_MIN)", IDLE_STOP_MIN)
+                    await hub.broadcast({"type": "auto_stopped", "idle_min": IDLE_STOP_MIN})
+                    await set_broadcast(False)
 
 
 @asynccontextmanager
