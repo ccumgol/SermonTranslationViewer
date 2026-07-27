@@ -93,6 +93,9 @@ Everything is controlled here during the service. Top-right **EN/한글** button
   After 4s of silence a hint appears, tailored to the selected device: for a
   🔊 computer-audio device you must also set **macOS System Settings → Sound → Output**
   to BlackHole (use a Multi-Output Device if you want to hear it too).
+  If the device named in `.env` is not plugged in, the server **falls back to the default
+  input** and shows a red notice instead of dying — plug the device in, hit
+  **🔄 Refresh list**, pick it, and it recovers without a restart.
 - **6-4. Languages (1–3)** — up to 3 targets, each with a text color; screen splits into rows.
   **N languages = N× cost** (online).
 - **6-5. Sermon script (recommended)** — paste the script and Apply. Proper nouns are

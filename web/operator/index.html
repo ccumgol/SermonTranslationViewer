@@ -87,6 +87,11 @@
       min-width: 74px; text-align: right; font-variant-numeric: tabular-nums;
       font-size: 12px; color: #8a93a6;
     }
+    .device-warn {
+      margin-top: 10px; padding: 10px 12px; border-radius: 6px;
+      background: #4a1d20; border: 1px solid #8c3a40; color: #ffb3b8;
+      font-size: 13px; line-height: 1.5;
+    }
     .level-warn {
       margin-top: 8px; padding: 8px 10px; border-radius: 6px;
       background: #3a2a12; border: 1px solid #7a5a20; color: #ffca6b; font-size: 13px;
@@ -132,6 +137,7 @@
         </div>
         <span id="level-db" class="level-db">—</span>
       </div>
+      <div id="device-warn" class="device-warn" hidden></div>
       <div id="level-warn" class="level-warn" hidden></div>
       <!-- 입력 게인: 소리가 작아 전사가 안 될 때 앱에서 신호를 증폭한다 -->
       <div class="row" style="align-items:center; margin-top:8px;">
@@ -251,6 +257,7 @@
     const levelBar = document.getElementById("level-bar");
     const levelDb = document.getElementById("level-db");
     const levelWarn = document.getElementById("level-warn");
+    const deviceWarn = document.getElementById("device-warn");
     const gainEl = document.getElementById("gain");
     const gainVal = document.getElementById("gain-val");
     function showGain(g) { gainVal.textContent = `${parseFloat(g).toFixed(1)}×`; }
@@ -505,6 +512,14 @@
       send({ cmd: "set_device", device: parseInt(deviceSelect.value, 10) });
     };
     btnRefreshDevices.onclick = () => send({ cmd: "list_devices" });
+
+    // 입력 장치를 못 열었을 때(케이블 미연결 등) 안내.
+    // 서버는 살아 있으므로 장치를 꽂고 목록 새로고침 → 선택으로 복구할 수 있다.
+    function showDeviceError(message) {
+      if (!message) { deviceWarn.hidden = true; return; }
+      deviceWarn.hidden = false;
+      deviceWarn.textContent = message;
+    }
 
     // ── 입력 레벨 게이지 ──
     // 장치를 골라도 실제 신호가 들어오는지 화면만 봐서는 알 수 없어 추가했다.
@@ -796,6 +811,7 @@
             applyBackendBadge(msg.backend);
             refreshBroadcastBtn();
             populateDevices(msg.devices, msg.current_device);
+            showDeviceError(msg.device_error);
             if (msg.script_terms > 0)
               tmsg(scriptMsg, () => `${t("scriptSaved")} ${msg.script_terms}`);
             defaultColors = msg.default_colors || defaultColors;
@@ -852,10 +868,12 @@
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);
+            showDeviceError(msg.device_error);
             tmsg(deviceMsg, () => t("devRefreshed"));
             break;
           case "device_state":
             tmsg(deviceMsg, () => `${t("devSwitched")} [${msg.current}]`);
+            showDeviceError(msg.device_error);   // 복구되면 배너가 사라진다
             break;
           case "device_error":
             tmsg(deviceMsg, () => `${t("devError")} ${msg.message}`);

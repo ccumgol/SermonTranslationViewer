@@ -603,6 +603,20 @@ async def _usage_heartbeat() -> None:
                     await set_broadcast(False)
 
 
+def _log_pipeline_failure(task: asyncio.Task) -> None:
+    """파이프라인이 예외로 끝나면 반드시 로그에 남긴다.
+
+    `create_task` 의 결과를 아무도 await 하지 않으면 예외가 조용히 사라진다.
+    그러면 서버는 200 OK 로 응답하고 화면도 정상으로 보이는데 자막만 안 나와서
+    원인을 찾을 수 없다(실제로 겪음 — 오디오 장치 미연결).
+    """
+    if task.cancelled():
+        return  # 정상 종료 경로
+    exc = task.exception()
+    if exc is not None:
+        log.error("⚠ 파이프라인이 중단되었습니다: %s", exc, exc_info=exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()  # 어떤 실행 경로로 뜨든 로깅이 켜지도록 보장(중복 호출은 무시)
@@ -635,6 +649,7 @@ async def lifespan(app: FastAPI):
             "          고정 토큰을 쓰려면 .env 에 OPERATOR_TOKEN 을 설정하세요.\n"
         )
     task = asyncio.create_task(pipeline(settings))
+    task.add_done_callback(_log_pipeline_failure)
     log.info("파이프라인 시작 — 모델: %s", settings.model)
     try:
         yield
@@ -858,6 +873,7 @@ async def _handle_command(cmd: dict) -> None:
             {
                 "type": "device_list",
                 "devices": input_devices(),
+                "device_error": state.capture.error if state.capture else None,
                 "current": state.capture.current_device if state.capture else None,
             }
         )
@@ -916,9 +932,13 @@ async def _switch_device(device) -> None:  # noqa: ANN001
     if isinstance(device, str) and device.isdigit():
         device = int(device)
     try:
-        state.capture.set_device(device)
+        state.capture.set_device(device)   # 성공하면 capture.error 가 해제된다
         await hub.broadcast(
-            {"type": "device_state", "current": state.capture.current_device}
+            {
+                "type": "device_state",
+                "current": state.capture.current_device,
+                "device_error": state.capture.error,   # 복구되면 None → 배너 해제
+            }
         )
     except Exception as exc:  # noqa: BLE001
         log.warning("장치 전환 실패: %s", exc)
@@ -950,6 +970,7 @@ def _operator_init() -> dict:
         "max_languages": MAX_LANGUAGES,
         "devices": input_devices(),
         "current_device": state.capture.current_device if state.capture else None,
+        "device_error": state.capture.error if state.capture else None,
         "gain": state.capture.gain if state.capture else 1.0,
         "script_terms": len(state.script.terms),
     }

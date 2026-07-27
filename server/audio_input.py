@@ -68,6 +68,14 @@ class AudioCapture:
         self._peak_level = 0.0
         # 소프트웨어 입력 게인(배율). 1.0=증폭 없음. 콜백 스레드가 읽고 루프가 씀.
         self._gain = 1.0
+        # 입력 장치를 못 연 경우의 사용자 안내 문구(정상이면 None).
+        # 운영자 화면에 띄워, 장치를 꽂고 '목록 새로고침 → 선택'으로 복구하게 한다.
+        self._error: str | None = None
+
+    @property
+    def error(self) -> str | None:
+        """입력 장치 문제 안내(없으면 None)."""
+        return self._error
 
     def _apply_gain(self, indata):  # noqa: ANN001, ANN201
         """입력 신호에 게인을 곱하고 int16 범위로 클리핑한다. 1.0 이면 그대로 반환."""
@@ -153,6 +161,7 @@ class AudioCapture:
         stream.start()
         self._stream = stream
         self._device = device
+        self._error = None   # 열렸으면 이전 오류 표시를 지운다(복구 완료)
 
     def _close_stream(self) -> None:
         # 장치를 바꾸면 이전 장치의 레벨이 남아 '신호 있음'으로 잘못 보이지 않게 한다.
@@ -164,8 +173,40 @@ class AudioCapture:
             self._stream = None
 
     async def __aenter__(self) -> "AudioCapture":
+        """입력 스트림을 연다. **실패해도 예외를 올리지 않는다.**
+
+        여기서 예외가 나가면 파이프라인 전체가 죽어 자막이 영영 나오지 않는다.
+        그런데 서버는 200 OK 로 응답하고 운영자 화면도 정상으로 보여서, 원인을
+        찾을 방법이 없다(실제로 겪음: `.env` 의 Vocaster 가 미연결이라 조용히 죽음).
+
+        그래서 지정 장치가 안 열리면 **기본 장치로 대체**하고, 그것도 안 되면
+        오류만 기록한 채 살아 있는다. 운영자는 장치를 꽂은 뒤 화면에서
+        '목록 새로고침 → 선택'으로 복구할 수 있다.
+        """
         self._loop = asyncio.get_running_loop()
-        self._open_stream(self._device)
+        requested = self._device
+        try:
+            self._open_stream(requested)
+            return self
+        except Exception as exc:  # noqa: BLE001
+            log.warning("지정한 입력 장치를 열 수 없습니다 (%s): %s", requested, exc)
+
+        if requested is not None:
+            try:
+                self._open_stream(None)   # 기본 입력 장치로 대체
+                self._error = (
+                    f"지정한 입력 장치({requested})를 찾을 수 없어 "
+                    "기본 장치로 대체했습니다. 장치를 연결한 뒤 목록을 새로고침하세요."
+                )
+                log.warning("기본 입력 장치로 대체했습니다 — 운영자 화면에서 바꿀 수 있습니다")
+                return self
+            except Exception as exc:  # noqa: BLE001
+                log.error("기본 입력 장치도 열 수 없습니다: %s", exc)
+
+        self._error = (
+            f"입력 장치를 열 수 없습니다({requested}). "
+            "장치를 연결한 뒤 운영자 화면에서 목록을 새로고침하고 선택하세요."
+        )
         return self
 
     async def __aexit__(self, *exc) -> None:  # noqa: ANN002
