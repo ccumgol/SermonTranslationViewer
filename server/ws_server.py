@@ -863,6 +863,23 @@ async def _handle_command(cmd: dict) -> None:
         )
     elif name == "set_script":
         await _set_script(cmd.get("text", ""))
+    elif name == "set_gain":
+        await _set_gain(cmd.get("gain"))
+
+
+async def _set_gain(value) -> None:  # noqa: ANN001
+    """입력 게인(소프트웨어 증폭)을 설정하고 결과를 브로드캐스트.
+
+    슬라이더 드래그로 자주 오므로 쿨다운 대상이 아니다(무해).
+    """
+    if state.capture is None:
+        return
+    try:
+        gain = float(value)
+    except (TypeError, ValueError):
+        return
+    applied = state.capture.set_gain(gain)
+    await hub.broadcast({"type": "gain_state", "gain": applied})
 
 
 async def _set_script(text: str) -> None:
@@ -933,6 +950,7 @@ def _operator_init() -> dict:
         "max_languages": MAX_LANGUAGES,
         "devices": input_devices(),
         "current_device": state.capture.current_device if state.capture else None,
+        "gain": state.capture.gain if state.capture else 1.0,
         "script_terms": len(state.script.terms),
     }
 

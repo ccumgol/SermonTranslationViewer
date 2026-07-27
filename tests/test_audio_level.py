@@ -175,3 +175,43 @@ def test_완전_무음은_작음경고가_아니다():
     from ws_server import _is_too_quiet
 
     assert _is_too_quiet(0.0, online=False, silent=True) is False
+
+
+# ── 입력 게인(소프트웨어 증폭) ──────────────────────────────────
+# 실제 문제: 컴퓨터 소리 볼륨이 낮아 STT 임계값에 못 미쳐 전사가 안 됐다.
+# 시스템 볼륨을 못 올리는 상황에서 앱이 신호를 증폭해 임계값을 넘긴다.
+
+
+def test_게인이_신호를_증폭한다():
+    cap = AudioCapture()
+    cap.set_gain(2.0)
+    chunk = _chunk(0.25)
+    out = cap._apply_gain(chunk)
+    rms_in = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
+    rms_out = float(np.sqrt(np.mean(out.astype(np.float32) ** 2)))
+    assert rms_out == pytest.approx(rms_in * 2, rel=0.02)
+
+
+def test_게인은_int16_범위로_클리핑된다():
+    """증폭이 최대치를 넘어도 오버플로우(랩어라운드)가 나면 안 된다."""
+    cap = AudioCapture()
+    cap.set_gain(8.0)
+    out = cap._apply_gain(_chunk(0.5))  # 0.5 * 8 = 4.0 → 클리핑
+    assert out.max() <= 32767
+    assert out.min() >= -32768
+
+
+def test_게인은_허용_범위로_클램프된다():
+    from audio_input import MAX_GAIN, MIN_GAIN
+
+    cap = AudioCapture()
+    assert cap.set_gain(100) == MAX_GAIN   # 상한
+    assert cap.set_gain(0.1) == MIN_GAIN   # 하한
+    assert cap.set_gain(3.0) == 3.0        # 범위 내
+
+
+def test_게인_1이면_원본을_그대로_반환():
+    """기본(1.0)일 때 불필요한 복사·연산을 하지 않는다."""
+    cap = AudioCapture()  # 기본 게인 1.0
+    chunk = _chunk(0.3)
+    assert cap._apply_gain(chunk) is chunk

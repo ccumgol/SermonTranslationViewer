@@ -33,6 +33,10 @@ log = logging.getLogger("audio")
 INT16_FULL_SCALE = 32768.0
 # 게이지 하한. 이보다 조용하면 '무음'으로 표시한다.
 SILENCE_DBFS = -60.0
+# 소프트웨어 입력 게인(배율) 허용 범위. 1.0=증폭 없음.
+# 시스템/믹서 볼륨을 못 올리는 상황에서 낮은 신호를 앱에서 증폭해 STT 임계값을 넘긴다.
+MIN_GAIN = 1.0
+MAX_GAIN = 8.0
 
 
 def rms_to_dbfs(rms: float) -> float:
@@ -62,11 +66,32 @@ class AudioCapture:
         # 오디오 콜백 스레드가 쓰고 이벤트 루프가 읽지만, float 대입/읽기는
         # GIL 하에서 원자적이라 락이 필요 없다(값이 조금 늦게 반영돼도 무해).
         self._peak_level = 0.0
+        # 소프트웨어 입력 게인(배율). 1.0=증폭 없음. 콜백 스레드가 읽고 루프가 씀.
+        self._gain = 1.0
+
+    def _apply_gain(self, indata):  # noqa: ANN001, ANN201
+        """입력 신호에 게인을 곱하고 int16 범위로 클리핑한다. 1.0 이면 그대로 반환."""
+        if self._gain == 1.0:
+            return indata
+        amplified = np.asarray(indata, dtype=np.float32) * self._gain
+        np.clip(amplified, -INT16_FULL_SCALE, INT16_FULL_SCALE - 1, out=amplified)
+        return amplified.astype(np.int16)
+
+    def set_gain(self, gain: float) -> float:
+        """입력 게인을 설정(범위로 클램프)하고 실제 적용된 값을 반환."""
+        self._gain = max(MIN_GAIN, min(float(gain), MAX_GAIN))
+        return self._gain
+
+    @property
+    def gain(self) -> float:
+        return self._gain
 
     def _callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         if status:
             # 오버플로우/언더런 등은 무시하지 않고 표준에러로 알린다.
             log.warning("입력 상태 경고: %s", status)
+        # 게인을 먼저 적용해 레벨 게이지·전사(fanout)에 동일하게 반영한다.
+        indata = self._apply_gain(indata)
         self._track_level(indata)
         # indata: int16 mono → 그대로 PCM 바이트로 변환
         pcm_bytes = bytes(indata)

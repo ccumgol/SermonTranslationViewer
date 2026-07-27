@@ -133,6 +133,12 @@
         <span id="level-db" class="level-db">—</span>
       </div>
       <div id="level-warn" class="level-warn" hidden></div>
+      <!-- 입력 게인: 소리가 작아 전사가 안 될 때 앱에서 신호를 증폭한다 -->
+      <div class="row" style="align-items:center; margin-top:8px;">
+        <span class="label" style="min-width:88px; margin:0;" data-i18n="gainLabel">입력 게인</span>
+        <input type="range" id="gain" min="1" max="8" step="0.5" value="1" />
+        <span id="gain-val" class="val">1.0×</span>
+      </div>
     </div>
 
     <!-- 모바일 자막 주소 / QR -->
@@ -245,6 +251,11 @@
     const levelBar = document.getElementById("level-bar");
     const levelDb = document.getElementById("level-db");
     const levelWarn = document.getElementById("level-warn");
+    const gainEl = document.getElementById("gain");
+    const gainVal = document.getElementById("gain-val");
+    function showGain(g) { gainVal.textContent = `${parseFloat(g).toFixed(1)}×`; }
+    gainEl.oninput = () => showGain(gainEl.value);                       // 드래그 중 즉시 표시
+    gainEl.onchange = () => send({ cmd: "set_gain", gain: parseFloat(gainEl.value) });  // 놓을 때 전송
     const langSlots = document.getElementById("lang-slots");
     const languageMsg = document.getElementById("language-msg");
 
@@ -261,7 +272,7 @@
         title: "설교 실시간 번역 — 운영자 대시보드",
         outputHint: '송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용',
         audioSource: "오디오 입력 소스", currentDevice: "현재 입력 장치",
-        inputLevel: "입력 레벨", levelSilent: "무음",
+        inputLevel: "입력 레벨", levelSilent: "무음", gainLabel: "입력 게인",
         tooQuiet: "⚠ 소리는 들어오지만 너무 작아 전사되지 않습니다. 출력/믹서 볼륨을 높이세요. (오프라인 모드는 작은 소리를 인식하지 못합니다)",
         silentMic: "⚠ 입력 신호가 없습니다. 마이크·믹서가 켜져 있는지, 선택한 장치가 맞는지 확인하세요.",
         silentSystemAudio: "⚠ 입력 신호가 없습니다. 컴퓨터 소리를 번역하려면 macOS [시스템 설정 → 사운드 → 출력]을 이 장치(BlackHole 등)로 바꿔야 합니다. 소리도 같이 들으려면 ‘다중 출력 장치’를 만들어 사용하세요.",
@@ -303,7 +314,7 @@
         title: "Sermon Live Translation — Operator Dashboard",
         outputHint: 'Output screen: <code>/</code> · use this URL as an OBS browser source',
         audioSource: "Audio input source", currentDevice: "Current device",
-        inputLevel: "Input level", levelSilent: "silent",
+        inputLevel: "Input level", levelSilent: "silent", gainLabel: "Input gain",
         tooQuiet: "⚠ Audio is coming in but too quiet to transcribe. Raise the output/mixer volume. (Offline mode can't pick up quiet audio)",
         silentMic: "⚠ No input signal. Check that the mic/mixer is on and that the right device is selected.",
         silentSystemAudio: "⚠ No input signal. To translate computer audio, set macOS [System Settings → Sound → Output] to this device (e.g. BlackHole). Create a Multi-Output Device if you also want to hear it.",
@@ -778,6 +789,7 @@
               tmsg(scriptMsg, () => `${t("scriptSaved")} ${msg.script_terms}`);
             defaultColors = msg.default_colors || defaultColors;
             maxLanguages = msg.max_languages || 3;
+            if (typeof msg.gain === "number") { gainEl.value = msg.gain; showGain(msg.gain); }
             applyLayout(lastLayout);   // 슬롯 색상 기본값 반영해 다시 그림
             break;
           case "layout":
@@ -822,6 +834,10 @@
             break;
           case "level":
             onLevel(msg);
+            break;
+          case "gain_state":
+            gainEl.value = msg.gain;
+            showGain(msg.gain);
             break;
           case "device_list":
             populateDevices(msg.devices, msg.current);
