@@ -574,7 +574,7 @@ address already in use` 로 조용히 실패(세 번 연속 실패 로그 확인
 | 항목 | 상태 | 비고 |
 |---|---|---|
 | WS/인증 **통합 테스트** | 🟢 완료 | Agent B, 2026-07-08 · `tests/test_ws_security.py` 11개. **뮤테이션 테스트로 실효성 검증**(보안 코드 무력화 시 실패 확인) |
-| `ws_server.py` 모듈 분리(689줄) | 🔴 미착수 | 인증/명령/라우팅 |
+| `ws_server.py` 모듈 분리(1000줄+) | 🔴 미착수 | **다음 세션 착수 예정**(8장 인계 분리안 참고) |
 | `print` → `logging` 전환 | 🟢 완료 | Agent C (2026-07-26) · logging_setup + 34개 전환, LOG_LEVEL env, 92 passed |
 | preview SDK 필드 방어적 처리 | 🔴 미착수 | 세션 재개 회귀 위험 |
 
@@ -661,11 +661,24 @@ address already in use` 로 조용히 실패(세 번 연속 실패 로그 확인
 
 ### 현재 진행 중
 ```
-- [진행 2026-07-26 / Agent C] 코드 품질 개선 — 1단계(logging) 완료·커밋, 2단계 대기
-  ✅ 1단계 print→logging: logging_setup + 34개 전환, 92 passed (3.13 참고)
-  ⏳ 2단계 ws_server.py(1000줄+) 모듈 분리: 회귀 위험 커서 사용자 확인 후 신중 진행 예정.
-     분리안: hub.py / app_state.py / validation.py / orchestration.py / commands.py
-     (기존 from ws_server import ... 는 re-export 로 호환 유지 → 테스트 안 깨짐)
+(진행 중 작업 없음 — 1단계 logging 완료·커밋. 2단계는 새 세션에서 진행하기로 사용자와 합의)
+```
+
+### 다음 세션 착수 예정 — 코드 품질 2단계: ws_server.py 모듈 분리 ★인계
+```
+- ws_server.py(1000줄+)를 분리. 순수 리팩터링(기능 변화 0), 92 테스트 항상 통과.
+- 분리안(계층 순서, 순환 import 주의):
+    hub.py         : Hub (독립)
+    app_state.py   : AppState·LangWorker·state 싱글턴 (LangWorker 가 hub.broadcast 호출 → hub import)
+    validation.py  : _is_hex_color / _sanitize_style / _sanitize_languages (거의 독립)
+    orchestration.py: _build_backend/switch_backend/set_broadcast/apply_languages/pipeline/
+                      _usage_heartbeat/_level_heartbeat/_is_too_quiet (state·hub 참조)
+    commands.py    : _cooldown_remaining/_handle_command/_set_script/_switch_device
+  ws_server.py 는 app·lifespan·HTTP 라우트·ws_endpoint 만 남긴다.
+- ★호환: 기존 테스트가 `from ws_server import Hub, _sanitize_languages, _is_too_quiet,
+  _public_init ...` 를 import 하므로, ws_server.py 에서 분리 대상들을 **re-export** 해야
+  테스트가 안 깨진다. (또는 테스트 import 경로 수정)
+- 착수 시 규칙 A대로 이 로그를 '진행 중'으로 옮기고, 단계마다 pytest -q 로 회귀 확인.
 ```
 
 ### 작성 예시 (복사해서 쓰세요)
