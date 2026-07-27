@@ -199,7 +199,8 @@ data/                   원고·로그·용어집 (git 제외)
 | 온라인 시작 (Windows) | `start.bat` 또는 `start.ps1` |
 | 오프라인 시작 (mac) | `BACKEND=local ./start.sh` |
 | 패키지 실행 | `python -m server` |
-| 종료 | `Ctrl+C` |
+| 종료 | 실행한 터미널에서 `Ctrl+C` |
+| 종료 (터미널을 닫아 백그라운드에 남은 경우) | `./stop.sh` |
 | 실행 중 백엔드 전환 | 운영자 화면 배지 클릭 |
 
 > `./start.sh` 는 서버가 뜨면 **운영자 화면을 자동으로 브라우저에 엽니다.**
