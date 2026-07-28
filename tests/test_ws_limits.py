@@ -113,10 +113,11 @@ def test_연결_상한_설정이_존재한다():
 
 
 def test_연결_상한_도달시_새_접속을_거부한다(client, monkeypatch):
-    import ws_server
+    import hub as hub_module
 
-    # 상한을 0 으로 만들어 '가득 찬 상태'를 시뮬레이션
-    monkeypatch.setattr(ws_server, "MAX_WS_CLIENTS", 0)
+    # 상한을 0 으로 만들어 '가득 찬 상태'를 시뮬레이션.
+    # Hub.is_full 은 hub 모듈의 MAX_WS_CLIENTS 를 참조하므로 그쪽을 패치한다.
+    monkeypatch.setattr(hub_module, "MAX_WS_CLIENTS", 0)
     with pytest.raises(Exception):
         with client.websocket_connect("/ws") as ws:
             ws.receive_json()
