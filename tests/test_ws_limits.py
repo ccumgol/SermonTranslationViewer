@@ -43,9 +43,9 @@ def test_같은_명령_연타는_쿨다운으로_차단된다(client, monkeypatc
     set_script 를 쓰는 이유: 워커 재기동 같은 부작용이 없고 **항상 응답**하므로
     (script_state) 테스트가 무한 대기하지 않는다.
     """
-    import ws_server
+    import commands  # 쿨다운 로직은 commands 모듈로 분리됨
 
-    monkeypatch.setattr(ws_server, "_COOLDOWN_COMMANDS", {"set_script"})
+    monkeypatch.setattr(commands, "_COOLDOWN_COMMANDS", {"set_script"})
     with client.websocket_connect("/ws") as ws:
         ws.receive_json()  # init
         first = _send(ws, {"cmd": "set_script", "text": "첫 번째"})
@@ -75,10 +75,10 @@ def test_백엔드_전환은_더_긴_쿨다운을_쓴다():
 
 def test_쿨다운_경과_후에는_다시_실행된다(client, monkeypatch):
     """쿨다운 시간이 지나면 같은 명령이 다시 통과해야 한다."""
-    import ws_server
+    import commands
 
-    monkeypatch.setattr(ws_server, "_COOLDOWN_COMMANDS", {"set_script"})
-    monkeypatch.setattr(ws_server, "COMMAND_COOLDOWN_SEC", 0.0)
+    monkeypatch.setattr(commands, "_COOLDOWN_COMMANDS", {"set_script"})
+    monkeypatch.setattr(commands, "COMMAND_COOLDOWN_SEC", 0.0)
     with client.websocket_connect("/ws") as ws:
         ws.receive_json()
         assert _send(ws, {"cmd": "set_script", "text": "하나"})["type"] == "script_state"
@@ -94,9 +94,10 @@ def test_과도하게_긴_원고는_잘려서_적용된다(client, monkeypatch):
     응답 메시지 개수에 의존하지 않고 **저장된 결과**로 판정한다
     (상한이 없으면 truncated 알림이 오지 않아 테스트가 멈출 수 있으므로).
     """
+    import commands
     import ws_server
 
-    monkeypatch.setattr(ws_server, "MAX_SCRIPT_CHARS", 100)
+    monkeypatch.setattr(commands, "MAX_SCRIPT_CHARS", 100)
     with client.websocket_connect("/ws") as ws:
         ws.receive_json()
         _send(ws, {"cmd": "set_script", "text": "가" * 500})
