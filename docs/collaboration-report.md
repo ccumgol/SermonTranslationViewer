@@ -652,7 +652,7 @@ ws_server.py(460)    FastAPI app·lifespan·HTTP 라우트·ws_endpoint (엔트�
 ### 4.2 사용자 편의성 (analysis-report 7장)
 | 우선 | 항목 | 상태 | 담당 |
 |---|---|---|---|
-| 높음 | 토큰 입력 UX(sessionStorage·QR) | 🔴 미착수 | — |
+| 높음 | 토큰 입력 UX(sessionStorage) | 🟢 완료 | Agent C (2026-07-27) · URL>저장값 우선, auth_error prompt |
 | 높음 | 무발화 자동 방송 종료 옵션(`IDLE_STOP_MIN`) | 🟢 완료 | Agent C (2026-07-27) · 기본 off, reconfig_lock 재판정 |
 | 높음 | 입력 게인 슬라이더(소프트웨어 증폭 1~8배) | 🟢 완료 | Agent C (2026-07-27) · too_quiet 완결편 |
 | 낮음 | stop.sh 서버 종료 스크립트(고아 프로세스) | 🟢 완료 | Agent C (2026-07-27) |
@@ -731,6 +731,7 @@ ws_server.py(460)    FastAPI app·lifespan·HTTP 라우트·ws_endpoint (엔트�
 
 | 날짜 | 갱신자 | 내용 |
 |---|---|---|
+| 2026-07-27 | Claude (Agent C) | **토큰 입력 UX 완료**(3.17) — URL>sessionStorage 우선순위·저장, auth_error prompt 입력. 재방문·토큰없는 주소도 동작 |
 | 2026-07-27 | Claude (Agent C) | **코드품질 2단계: ws_server 모듈 분리 완료**(3.16) — 1020줄+→7모듈(constants/hub/validation/app_state/orchestration/commands), ws_server 460줄. 브랜치 작업 후 병합, 각 단계 106 passed, ruff 도입 |
 | 2026-07-27 | Claude (Agent C) | **후속 개선 4건**(3.14) — stop.sh(고아서버 종료)·무발화 자동종료(IDLE_STOP_MIN)·입력 게인 슬라이더(1~8배)·WS 재연결/연결상태 강화. 각 독립 커밋, 98 passed |
 | 2026-07-26 | Claude (Agent C) | **코드 품질 1단계**(3.13) — print→logging 전환(logging_setup, 34개, LOG_LEVEL env). 토큰배너·CLI 출력은 print 유지. 92 passed. 2단계(모듈분리) 대기 |
@@ -760,8 +761,20 @@ ws_server.py(460)    FastAPI app·lifespan·HTTP 라우트·ws_endpoint (엔트�
 
 ### 현재 진행 중
 ```
-(진행 중 작업 없음 — 코드품질 2단계 ws_server 모듈 분리 완료, main 병합. 3.16 참고)
+(진행 중 작업 없음 — 토큰 입력 UX 완료. 3.17 참고)
 ```
+
+### 3.17 토큰 입력 UX 개선 (2026-07-27, Agent C)
+운영자 토큰이 URL `?token=` 로만 전달돼, 매번 긴 주소가 필요하고 토큰 없는 주소로
+접속하면 인증이 안 됐다. 개선:
+- **URL > sessionStorage 우선순위**: URL 에 토큰이 있으면 쓰고 sessionStorage 에 저장,
+  없으면 저장된 값을 쓴다. → start.sh 가 연 URL 로 최초 접속하면 저장되어, 이후
+  `/operator`(토큰 없는 주소)·재방문에서도 동작.
+- **auth_error 시 prompt**: 토큰이 없거나 틀리면 한 번 입력받아 저장(URL 편집·재접속 없이
+  이어서 조작). 새로 입력하면 다음에 또 틀릴 때 다시 묻는다(연타 시 반복 억제).
+- 사생활 보호 모드 등 저장 실패는 `try/catch` 로 무해 처리(URL 토큰으로 계속 동작).
+- i18n `tokenPrompt`(한/영). 검증: 브라우저에서 URL우선·저장값재사용·저장 동작, 콘솔 무오류.
+- 파일: `web/operator/index.html`. (H-2 의 sessionStorage 부분 반영; HTTPS/WSS 는 LAN 전용이라 보류)
 
 ### 다음 세션 착수 예정 — 코드 품질 2단계: ws_server.py 모듈 분리 ★인계
 ```

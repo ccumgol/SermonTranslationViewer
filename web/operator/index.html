@@ -309,7 +309,7 @@
         idleSuffix: "분 무발화", scriptApplied: "원고 적용됨 · 교정 용어",
         scriptSaved: "저장된 원고 · 교정 용어", scriptNone: "원고 없음", scriptApplying: "적용 중…",
         bcStarted: "방송 시작됨.", bcStopped: "방송 종료됨.",
-        devRefreshed: "목록을 새로고침했습니다.", devSwitched: "입력 장치를 전환했습니다 →", devError: "⚠ 장치 전환 실패:", tokenHint: "주소에 ?token=… 을 붙여 여세요.",
+        devRefreshed: "목록을 새로고침했습니다.", devSwitched: "입력 장치를 전환했습니다 →", devError: "⚠ 장치 전환 실패:", tokenHint: "주소에 ?token=… 을 붙여 여세요.", tokenPrompt: "운영자 토큰을 입력하세요 (서버 콘솔 또는 start.sh 가 연 주소의 ?token= 값)",
         mobileTitle: "모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기", extractMobile: "📱 모바일 주소 / QR 추출",
         throttled: "너무 빠릅니다 — 잠시 후 다시 시도하세요", scriptTruncated: "원고가 너무 길어 앞부분만 적용했습니다",
         autoStopped: "⏹ 무발화가 길어 방송을 자동 종료했습니다. 다시 시작하려면 ▶ 방송 시작을 누르세요.",
@@ -351,7 +351,7 @@
         idleSuffix: " min idle", scriptApplied: "Script applied · terms",
         scriptSaved: "Saved script · terms", scriptNone: "No script", scriptApplying: "Applying…",
         bcStarted: "Broadcast started.", bcStopped: "Broadcast stopped.",
-        devRefreshed: "Device list refreshed.", devSwitched: "Input device switched →", devError: "⚠ Device switch failed:", tokenHint: "add ?token=… to the URL.",
+        devRefreshed: "Device list refreshed.", devSwitched: "Input device switched →", devError: "⚠ Device switch failed:", tokenHint: "add ?token=… to the URL.", tokenPrompt: "Enter the operator token (from the server console, or the ?token= value in the URL start.sh opened)",
         mobileTitle: "Mobile subtitle URL (for attendees) — read subtitles in your language on your phone", extractMobile: "📱 Get mobile URL / QR",
         throttled: "Too fast — please retry shortly", scriptTruncated: "Script too long; only the beginning was applied",
         autoStopped: "⏹ Broadcast auto-stopped after a long silence. Press ▶ Start to resume.",
@@ -381,8 +381,28 @@
       refreshDynamic();
     };
 
-    // 운영자 토큰(서버에서 OPERATOR_TOKEN 설정 시 필요). URL ?token=... 로 전달.
-    const OPERATOR_TOKEN = new URLSearchParams(location.search).get("token") || "";
+    // 운영자 토큰(서버에서 OPERATOR_TOKEN 설정 시 필요).
+    // URL ?token=... 우선, 없으면 이전에 저장한 값을 쓴다. URL 로 받은 토큰은 저장해
+    // 이후 토큰 없는 주소·재방문에서도 동작하게 한다(사생활 보호 모드면 저장 생략).
+    let OPERATOR_TOKEN = new URLSearchParams(location.search).get("token") || "";
+    try {
+      if (OPERATOR_TOKEN) sessionStorage.setItem("operatorToken", OPERATOR_TOKEN);
+      else OPERATOR_TOKEN = sessionStorage.getItem("operatorToken") || "";
+    } catch (e) { /* 저장 실패해도 URL 토큰으로 동작 */ }
+
+    // 토큰이 없거나 틀리면(auth_error) 한 번 입력받아 저장한다 — URL 편집·재접속 없이 이어서 조작.
+    let tokenAsked = false;
+    function promptForToken() {
+      if (tokenAsked) return;   // 명령 연타 시 반복해서 묻지 않는다
+      tokenAsked = true;
+      const entered = window.prompt(t("tokenPrompt"), OPERATOR_TOKEN || "");
+      if (entered !== null && entered.trim()) {
+        OPERATOR_TOKEN = entered.trim();
+        try { sessionStorage.setItem("operatorToken", OPERATOR_TOKEN); } catch (e) {}
+        tokenAsked = false;   // 새로 입력 → 또 틀리면 다시 물음
+      }
+    }
+
     function send(obj) {
       if (socket && socket.readyState === WebSocket.OPEN) {
         if (OPERATOR_TOKEN) obj.token = OPERATOR_TOKEN;
@@ -836,6 +856,7 @@
             showAuthBanner();
             tmsg(document.getElementById("backend-msg"),
               () => "⚠ " + msg.message + " " + t("tokenHint"));
+            promptForToken();   // 토큰을 입력받아 저장하면 이어서 조작 가능
             break;
           case "usage":
             applyUsage(msg);
