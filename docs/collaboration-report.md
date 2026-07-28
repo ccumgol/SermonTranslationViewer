@@ -731,7 +731,16 @@ WS 가 차단된다(실측 403). URL 방식이면 Origin 이 동일 출처라 �
 
 ### 현재 진행 중
 ```
-(진행 중 작업 없음 — 후속 개선 4건 모두 완료·커밋. 3.14 참고)
+- [시작 2026-07-27 / Agent C] 코드품질 2단계: ws_server.py 모듈 분리 (★브랜치 작업)
+  브랜치: refactor/ws-server-split (회귀 위험 커서 main 보호). 순수 리팩터링(기능 변화 0).
+  계층(단방향, 순환 import 방지):
+    constants.py(상수) ← hub.py(Hub) ← app_state.py(state·AppState·LangWorker)
+    ← orchestration.py(백엔드·파이프라인·하트비트) ← commands.py(명령) ← ws_server.py(app·lifespan·라우트·ws)
+    validation.py(순수 검증)는 orchestration·commands 가 사용.
+  방식: 안전한 것부터(constants→hub→validation→…) 단계별로 뽑고, ws_server 가 re-export 해
+        기존 from ws_server import ... (테스트 106개)가 안 깨지게. 각 단계 pytest 통과 필수.
+  ※ 다른 Agent 는 이 작업 중 ws_server.py 를 건드리지 말 것(브랜치에서 대규모 이동 중).
+  다음 단계: 브랜치 생성 → constants.py 분리 → pytest
 ```
 
 ### 다음 세션 착수 예정 — 코드 품질 2단계: ws_server.py 모듈 분리 ★인계
