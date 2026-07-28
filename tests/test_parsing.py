@@ -92,17 +92,17 @@ def test_짧은_토큰파일은_무시하고_새로_만든다(monkeypatch, tmp_p
 
 def test_무발화_자동종료_판정(monkeypatch):
     os.environ.setdefault("GEMINI_API_KEY", "test")
-    import ws_server
+    import orchestration  # _should_auto_stop 은 orchestration 모듈로 분리됨
 
-    monkeypatch.setattr(ws_server, "IDLE_STOP_MIN", 10.0)   # 10분 설정
-    assert ws_server._should_auto_stop(9 * 60, broadcasting=True) is False    # 아직 미달
-    assert ws_server._should_auto_stop(10 * 60, broadcasting=True) is True    # 도달 + 방송중
-    assert ws_server._should_auto_stop(20 * 60, broadcasting=False) is False  # 방송중 아님
+    monkeypatch.setattr(orchestration, "IDLE_STOP_MIN", 10.0)   # 10분 설정
+    assert orchestration._should_auto_stop(9 * 60, broadcasting=True) is False    # 아직 미달
+    assert orchestration._should_auto_stop(10 * 60, broadcasting=True) is True    # 도달 + 방송중
+    assert orchestration._should_auto_stop(20 * 60, broadcasting=False) is False  # 방송중 아님
 
 
 def test_무발화_자동종료_기본은_비활성(monkeypatch):
     os.environ.setdefault("GEMINI_API_KEY", "test")
-    import ws_server
+    import orchestration
 
-    monkeypatch.setattr(ws_server, "IDLE_STOP_MIN", 0.0)    # 기본값 = 끔
-    assert ws_server._should_auto_stop(999 * 60, broadcasting=True) is False
+    monkeypatch.setattr(orchestration, "IDLE_STOP_MIN", 0.0)    # 기본값 = 끔
+    assert orchestration._should_auto_stop(999 * 60, broadcasting=True) is False
