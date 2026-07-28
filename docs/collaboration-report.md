@@ -601,6 +601,34 @@ address already in use` 로 조용히 실패(세 번 연속 실패 로그 확인
 ⚠️ **주의**: 브라우저 소스의 **'로컬 파일' 체크는 켜면 안 된다** — Origin 이 `null` 이 되어
 WS 가 차단된다(실측 403). URL 방식이면 Origin 이 동일 출처라 통과.
 
+### 3.16 코드 품질 2단계: ws_server.py 모듈 분리 완료 (2026-07-27, Agent C, 브랜치)
+
+사용자 요청(완전 분리)으로 브랜치 `refactor/ws-server-split` 에서 진행. 순수 리팩터링(기능 0).
+**1020줄+ 단일 파일 → 7개 모듈**(관심사별), ws_server 는 460줄로 축소.
+
+분리 결과(단방향 의존, 순환 없음):
+```
+constants.py(71)     설정 상수
+hub.py(68)           WebSocket 브로드캐스트 허브
+validation.py(73)    입력 검증 순수 함수
+app_state.py(158)    AppState·LangWorker·전역 state
+orchestration.py(281) 백엔드전환·파이프라인·하트비트
+commands.py(163)     운영자 명령 처리
+ws_server.py(460)    FastAPI app·lifespan·HTTP 라우트·ws_endpoint (엔트리)
+```
+
+방식·안전장치:
+- 단계별(constants→hub→validation→app_state→orchestration→commands) 커밋, **각 단계 106 passed**.
+- ws_server 가 re-export(+`__all__`)로 기존 `from ws_server import …` 호환 → 대부분 테스트 무수정.
+- **화이트박스 테스트(monkeypatch)만** 대상 모듈 조정: 연결상한→hub, 무발화→orchestration,
+  쿨다운·원고상한→commands (re-export 는 값 바인딩이라 monkeypatch 로는 못 바꾼다).
+- ruff 도입해 이동으로 unused 된 import 18개 정리(re-export 는 `__all__` 로 보호).
+- 실제 import 로드로 **순환 없음 확인**, py_compile OK, 최종 **106 passed**.
+
+★다른 Agent 참고: 서버 심볼은 이제 각 모듈에 있다. `from ws_server import X` 는 re-export 로
+계속 되지만, **monkeypatch·직접 참조는 실제 모듈**(hub/app_state/orchestration/commands 등)을
+대상으로 해야 한다.
+
 ## 4. 작업 보드 (Work Board)
 
 상태: 🔴 미착수 · 🟡 진행중 · 🟢 완료 · ⚪ 보류(의도적)
@@ -643,7 +671,7 @@ WS 가 차단된다(실측 403). URL 방식이면 Origin 이 동일 출처라 �
 | 항목 | 상태 | 비고 |
 |---|---|---|
 | WS/인증 **통합 테스트** | 🟢 완료 | Agent B, 2026-07-08 · `tests/test_ws_security.py` 11개. **뮤테이션 테스트로 실효성 검증**(보안 코드 무력화 시 실패 확인) |
-| `ws_server.py` 모듈 분리(1000줄+) | 🔴 미착수 | **다음 세션 착수 예정**(8장 인계 분리안 참고) |
+| `ws_server.py` 모듈 분리(1020줄+→7모듈) | 🟢 완료 | Agent C (2026-07-27) · constants/hub/validation/app_state/orchestration/commands, ws_server 460줄, 106 passed |
 | `print` → `logging` 전환 | 🟢 완료 | Agent C (2026-07-26) · logging_setup + 34개 전환, LOG_LEVEL env, 92 passed |
 | preview SDK 필드 방어적 처리 | 🔴 미착수 | 세션 재개 회귀 위험 |
 
@@ -703,6 +731,7 @@ WS 가 차단된다(실측 403). URL 방식이면 Origin 이 동일 출처라 �
 
 | 날짜 | 갱신자 | 내용 |
 |---|---|---|
+| 2026-07-27 | Claude (Agent C) | **코드품질 2단계: ws_server 모듈 분리 완료**(3.16) — 1020줄+→7모듈(constants/hub/validation/app_state/orchestration/commands), ws_server 460줄. 브랜치 작업 후 병합, 각 단계 106 passed, ruff 도입 |
 | 2026-07-27 | Claude (Agent C) | **후속 개선 4건**(3.14) — stop.sh(고아서버 종료)·무발화 자동종료(IDLE_STOP_MIN)·입력 게인 슬라이더(1~8배)·WS 재연결/연결상태 강화. 각 독립 커밋, 98 passed |
 | 2026-07-26 | Claude (Agent C) | **코드 품질 1단계**(3.13) — print→logging 전환(logging_setup, 34개, LOG_LEVEL env). 토큰배너·CLI 출력은 print 유지. 92 passed. 2단계(모듈분리) 대기 |
 | 2026-07-26 | Claude (Agent C) | **오류보고서(troubleshooting-log) 4건 추가**(한/영) — 4-3 고아서버 포트충돌, 4-4 토큰 재사용 오해, 5-4 전사영역 무한확장, 6-7 오프라인 볼륨부족(게이지↔STT 임계값 사각지대) |
@@ -731,16 +760,7 @@ WS 가 차단된다(실측 403). URL 방식이면 Origin 이 동일 출처라 �
 
 ### 현재 진행 중
 ```
-- [시작 2026-07-27 / Agent C] 코드품질 2단계: ws_server.py 모듈 분리 (★브랜치 작업)
-  브랜치: refactor/ws-server-split (회귀 위험 커서 main 보호). 순수 리팩터링(기능 변화 0).
-  계층(단방향, 순환 import 방지):
-    constants.py(상수) ← hub.py(Hub) ← app_state.py(state·AppState·LangWorker)
-    ← orchestration.py(백엔드·파이프라인·하트비트) ← commands.py(명령) ← ws_server.py(app·lifespan·라우트·ws)
-    validation.py(순수 검증)는 orchestration·commands 가 사용.
-  방식: 안전한 것부터(constants→hub→validation→…) 단계별로 뽑고, ws_server 가 re-export 해
-        기존 from ws_server import ... (테스트 106개)가 안 깨지게. 각 단계 pytest 통과 필수.
-  ※ 다른 Agent 는 이 작업 중 ws_server.py 를 건드리지 말 것(브랜치에서 대규모 이동 중).
-  다음 단계: 브랜치 생성 → constants.py 분리 → pytest
+(진행 중 작업 없음 — 코드품질 2단계 ws_server 모듈 분리 완료, main 병합. 3.16 참고)
 ```
 
 ### 다음 세션 착수 예정 — 코드 품질 2단계: ws_server.py 모듈 분리 ★인계
