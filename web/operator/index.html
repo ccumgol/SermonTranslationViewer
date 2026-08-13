@@ -120,44 +120,34 @@
       <span class="muted" data-i18n="outputHint">송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용</span>
     </div>
 
-    <!-- 왼쪽 열: 오디오 입력 소스 + 번역 언어 -->
-    <div class="col">
-      <!-- 오디오 소스 선택 -->
-      <div class="card">
-        <div class="label" data-i18n="audioSource">오디오 입력 소스</div>
-        <div class="row">
-          <div class="ctl-group" style="flex:1; min-width:260px;">
-            <span class="label" data-i18n="currentDevice">현재 입력 장치</span>
-            <select id="device-select"></select>
-          </div>
-          <button id="btn-refresh-devices" data-i18n="refreshList">🔄 목록 새로고침</button>
-          <span id="device-msg"></span>
+    <!-- 왼쪽: 오디오 입력 소스 (오른쪽 모바일+원고 2칸 높이) -->
+    <div class="card">
+      <div class="label" data-i18n="audioSource">오디오 입력 소스</div>
+      <div class="row">
+        <div class="ctl-group" style="flex:1; min-width:260px;">
+          <span class="label" data-i18n="currentDevice">현재 입력 장치</span>
+          <select id="device-select"></select>
         </div>
-        <!-- 입력 레벨 게이지 — 장치를 골라도 실제로 소리가 들어오는지 확인용 -->
-        <div class="row" style="align-items:center; margin-top:10px;">
-          <span class="label" style="min-width:88px;" data-i18n="inputLevel">입력 레벨</span>
-          <div id="level-meter" title="-60dB … 0dB">
-            <div id="level-bar"></div>
-            <div class="level-tick" style="left:50%"></div>
-            <div class="level-tick" style="left:75%"></div>
-          </div>
-          <span id="level-db" class="level-db">—</span>
-        </div>
-        <div id="device-warn" class="device-warn" hidden></div>
-        <div id="level-warn" class="level-warn" hidden></div>
-        <!-- 입력 게인: 소리가 작아 전사가 안 될 때 앱에서 신호를 증폭한다 -->
-        <div class="row" style="align-items:center; margin-top:8px;">
-          <span class="label" style="min-width:88px; margin:0;" data-i18n="gainLabel">입력 게인</span>
-          <input type="range" id="gain" min="1" max="8" step="0.5" value="1" />
-          <span id="gain-val" class="val">1.0×</span>
-        </div>
+        <button id="btn-refresh-devices" data-i18n="refreshList">🔄 목록 새로고침</button>
+        <span id="device-msg"></span>
       </div>
-
-      <!-- 번역 언어 선택 (최대 3개, 행별 색상) -->
-      <div class="card">
-        <div class="label" data-i18n="langCardHint">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
-        <div class="row" id="lang-slots"></div>
-        <div class="muted" id="language-msg" style="margin-top:8px;"></div>
+      <!-- 입력 레벨 게이지 — 장치를 골라도 실제로 소리가 들어오는지 확인용 -->
+      <div class="row" style="align-items:center; margin-top:10px;">
+        <span class="label" style="min-width:88px;" data-i18n="inputLevel">입력 레벨</span>
+        <div id="level-meter" title="-60dB … 0dB">
+          <div id="level-bar"></div>
+          <div class="level-tick" style="left:50%"></div>
+          <div class="level-tick" style="left:75%"></div>
+        </div>
+        <span id="level-db" class="level-db">—</span>
+      </div>
+      <div id="device-warn" class="device-warn" hidden></div>
+      <div id="level-warn" class="level-warn" hidden></div>
+      <!-- 입력 게인: 소리가 작아 전사가 안 될 때 앱에서 신호를 증폭한다 -->
+      <div class="row" style="align-items:center; margin-top:8px;">
+        <span class="label" style="min-width:88px; margin:0;" data-i18n="gainLabel">입력 게인</span>
+        <input type="range" id="gain" min="1" max="8" step="0.5" value="1" />
+        <span id="gain-val" class="val">1.0×</span>
       </div>
     </div>
 
@@ -183,6 +173,13 @@
           <span id="script-msg" class="muted"></span>
         </div>
       </div>
+    </div>
+
+    <!-- 번역 언어 (전체폭) -->
+    <div class="card full">
+      <div class="label" data-i18n="langCardHint">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
+      <div class="row" id="lang-slots"></div>
+      <div class="muted" id="language-msg" style="margin-top:8px;"></div>
     </div>
 
     <!-- 제어 패널 -->
