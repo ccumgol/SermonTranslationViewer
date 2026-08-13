@@ -7,21 +7,23 @@
   <style>
     :root { color-scheme: dark; }
     body {
-      margin: 0; padding: 24px;
+      margin: 0; padding: 12px 18px;
       background: #0f1115; color: #e6e8ec;
       font-family: -apple-system, "Noto Sans KR", sans-serif;
     }
-    h1 { font-size: 18px; margin: 0 0 16px; font-weight: 600; }
-    .grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+    h1 { font-size: 16px; margin: 0 0 8px; font-weight: 600; }
+    /* 1920x1080 한 화면에 담기 위해 2열 그리드로 배치한다(.full 만 전체폭).
+       카드 대부분이 2열로 흐르면서 세로 길이가 절반 가까이 줄어든다. */
+    .grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; align-items: start; }
     .card {
       background: #171a21; border: 1px solid #262b36;
-      border-radius: 12px; padding: 16px;
+      border-radius: 10px; padding: 11px 13px;
     }
-    .label { font-size: 12px; color: #8a93a6; margin-bottom: 8px; }
+    .label { font-size: 12px; color: #8a93a6; margin-bottom: 5px; }
     /* 전사가 쌓여도 카드가 무한정 늘어나지 않게 상한 + 스크롤. 새 자막은 자동으로
        하단이 보이도록 JS 가 scrollTop 을 맞춘다(최신 멘트가 항상 보임). */
     .source {
-      font-size: 20px; line-height: 1.5; min-height: 2em; max-height: 7.5em;
+      font-size: 19px; line-height: 1.45; min-height: 2em; max-height: 5em;
       overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap;
     }
     .status { display: flex; gap: 16px; align-items: center; font-size: 13px; }
@@ -58,8 +60,8 @@
     #device-msg { font-size: 12px; color: #e0a14a; }
     .slot { display: flex; gap: 8px; align-items: flex-end; }
     .target-line {
-      font-size: 21px; line-height: 1.5; min-height: 1.6em; max-height: 6em;
-      overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; margin-bottom: 8px;
+      font-size: 20px; line-height: 1.45; min-height: 1.5em; max-height: 4.5em;
+      overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; margin-bottom: 6px;
     }
     .target-tag { font-size: 12px; color: #8a93a6; }
     /* 입력 레벨 게이지 — 초록(적정) → 노랑 → 빨강(과입력) */
@@ -117,7 +119,7 @@
     </div>
 
     <!-- 오디오 소스 선택 -->
-    <div class="card full">
+    <div class="card">
       <div class="label" data-i18n="audioSource">오디오 입력 소스</div>
       <div class="row">
         <div class="ctl-group" style="flex:1; min-width:260px;">
@@ -148,7 +150,7 @@
     </div>
 
     <!-- 모바일 자막 주소 / QR -->
-    <div class="card full">
+    <div class="card">
       <div class="label" data-i18n="mobileTitle">모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기</div>
       <div class="row" style="align-items:center;">
         <button id="btn-mobile" class="primary" data-i18n="extractMobile">📱 모바일 주소 / QR 추출</button>
@@ -157,16 +159,16 @@
     </div>
 
     <!-- 번역 언어 선택 (최대 3개, 행별 색상) -->
-    <div class="card full">
+    <div class="card">
       <div class="label" data-i18n="langCardHint">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
       <div class="row" id="lang-slots"></div>
       <div class="muted" id="language-msg" style="margin-top:8px;"></div>
     </div>
 
     <!-- 설교 원고 (전사 교정용) -->
-    <div class="card full">
+    <div class="card">
       <div class="label" data-i18n="scriptCardHint">설교 원고 — 붙여넣으면 고유명사를 뽑아 전사를 자동 교정 (예: 티브리어→히브리어)</div>
-      <textarea id="script-text" rows="4" data-i18n-ph="scriptPlaceholder"
+      <textarea id="script-text" rows="2" data-i18n-ph="scriptPlaceholder"
         style="width:100%; box-sizing:border-box; background:#1c1f27; color:#e6e8ec; border:1px solid #333; border-radius:8px; padding:10px; font-size:14px; resize:vertical;"></textarea>
       <div class="row" style="margin-top:8px; align-items:center;">
         <button id="btn-script" class="primary" data-i18n="applyScript">원고 적용</button>

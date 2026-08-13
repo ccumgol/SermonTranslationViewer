@@ -731,6 +731,7 @@ ws_server.py(460)    FastAPI app·lifespan·HTTP 라우트·ws_endpoint (엔트�
 
 | 날짜 | 갱신자 | 내용 |
 |---|---|---|
+| 2026-07-27 | Claude (Agent C) | **운영자 대시보드 1920x1080 배치**(3.18) — 2열 그리드(.full 제거)+여백 조밀화. 최악 케이스도 overflow 0, 한 화면 |
 | 2026-07-27 | Claude (Agent C) | **토큰 입력 UX 완료**(3.17) — URL>sessionStorage 우선순위·저장, auth_error prompt 입력. 재방문·토큰없는 주소도 동작 |
 | 2026-07-27 | Claude (Agent C) | **코드품질 2단계: ws_server 모듈 분리 완료**(3.16) — 1020줄+→7모듈(constants/hub/validation/app_state/orchestration/commands), ws_server 460줄. 브랜치 작업 후 병합, 각 단계 106 passed, ruff 도입 |
 | 2026-07-27 | Claude (Agent C) | **후속 개선 4건**(3.14) — stop.sh(고아서버 종료)·무발화 자동종료(IDLE_STOP_MIN)·입력 게인 슬라이더(1~8배)·WS 재연결/연결상태 강화. 각 독립 커밋, 98 passed |
@@ -761,8 +762,18 @@ ws_server.py(460)    FastAPI app·lifespan·HTTP 라우트·ws_endpoint (엔트�
 
 ### 현재 진행 중
 ```
-(진행 중 작업 없음 — 토큰 입력 UX 완료. 3.17 참고)
+(진행 중 작업 없음 — 운영자 대시보드 1920x1080 배치 완료. 3.18 참고)
 ```
+
+### 3.18 운영자 대시보드 1920x1080 한 화면 배치 (2026-07-27, Agent C)
+운영자 카드가 세로로 8개 쌓여 1080 을 넘겨 스크롤이 필요했다. 1920 폭을 활용해 2열로 배치.
+- **2열 그리드**: 카드 대부분에서 `.full` 제거(상태바·송출제어만 전체폭 유지) →
+  오디오|모바일, 언어|원고, 전사|번역 이 나란히. `align-items:start` 로 높이 다른 카드 정렬.
+- **여백 조밀화**: body padding 24→12/18, grid gap 16→10, card padding 16→11,
+  h1·label 여백 축소, `.source`/`.target-line` max-height·폰트 소폭↓, 원고 textarea rows 4→2.
+- **검증(1920x1080 실측)**: 빈 상태 마지막카드 bottom 644px, **최악 케이스**(한국어 전사 가득 +
+  번역 3언어 가득)에서도 `overflow 0`(한 화면). 스크린샷으로 배치·가독성 확인.
+- 파일: `web/operator/index.html`(운영자 화면만). 송출 자막(/)·모바일(/m)은 미변경.
 
 ### 3.17 토큰 입력 UX 개선 (2026-07-27, Agent C)
 운영자 토큰이 URL `?token=` 로만 전달돼, 매번 긴 주소가 필요하고 토큰 없는 주소로
