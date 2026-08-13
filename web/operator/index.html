@@ -15,6 +15,8 @@
     /* 1920x1080 한 화면에 담기 위해 2열 그리드로 배치한다(.full 만 전체폭).
        카드 대부분이 2열로 흐르면서 세로 길이가 절반 가까이 줄어든다. */
     .grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; align-items: start; }
+    /* 세로로 쌓는 컬럼 묶음 — 오른쪽 열에 여러 카드를 이어 붙일 때 사용(빈틈 없이). */
+    .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .card {
       background: #171a21; border: 1px solid #262b36;
       border-radius: 10px; padding: 11px 13px;
@@ -118,62 +120,68 @@
       <span class="muted" data-i18n="outputHint">송출 화면: <code>/</code> · OBS 브라우저 소스로 이 주소 사용</span>
     </div>
 
-    <!-- 오디오 소스 선택 -->
-    <div class="card">
-      <div class="label" data-i18n="audioSource">오디오 입력 소스</div>
-      <div class="row">
-        <div class="ctl-group" style="flex:1; min-width:260px;">
-          <span class="label" data-i18n="currentDevice">현재 입력 장치</span>
-          <select id="device-select"></select>
+    <!-- 왼쪽 열: 오디오 입력 소스 + 번역 언어 -->
+    <div class="col">
+      <!-- 오디오 소스 선택 -->
+      <div class="card">
+        <div class="label" data-i18n="audioSource">오디오 입력 소스</div>
+        <div class="row">
+          <div class="ctl-group" style="flex:1; min-width:260px;">
+            <span class="label" data-i18n="currentDevice">현재 입력 장치</span>
+            <select id="device-select"></select>
+          </div>
+          <button id="btn-refresh-devices" data-i18n="refreshList">🔄 목록 새로고침</button>
+          <span id="device-msg"></span>
         </div>
-        <button id="btn-refresh-devices" data-i18n="refreshList">🔄 목록 새로고침</button>
-        <span id="device-msg"></span>
-      </div>
-      <!-- 입력 레벨 게이지 — 장치를 골라도 실제로 소리가 들어오는지 확인용 -->
-      <div class="row" style="align-items:center; margin-top:10px;">
-        <span class="label" style="min-width:88px;" data-i18n="inputLevel">입력 레벨</span>
-        <div id="level-meter" title="-60dB … 0dB">
-          <div id="level-bar"></div>
-          <div class="level-tick" style="left:50%"></div>
-          <div class="level-tick" style="left:75%"></div>
+        <!-- 입력 레벨 게이지 — 장치를 골라도 실제로 소리가 들어오는지 확인용 -->
+        <div class="row" style="align-items:center; margin-top:10px;">
+          <span class="label" style="min-width:88px;" data-i18n="inputLevel">입력 레벨</span>
+          <div id="level-meter" title="-60dB … 0dB">
+            <div id="level-bar"></div>
+            <div class="level-tick" style="left:50%"></div>
+            <div class="level-tick" style="left:75%"></div>
+          </div>
+          <span id="level-db" class="level-db">—</span>
         </div>
-        <span id="level-db" class="level-db">—</span>
+        <div id="device-warn" class="device-warn" hidden></div>
+        <div id="level-warn" class="level-warn" hidden></div>
+        <!-- 입력 게인: 소리가 작아 전사가 안 될 때 앱에서 신호를 증폭한다 -->
+        <div class="row" style="align-items:center; margin-top:8px;">
+          <span class="label" style="min-width:88px; margin:0;" data-i18n="gainLabel">입력 게인</span>
+          <input type="range" id="gain" min="1" max="8" step="0.5" value="1" />
+          <span id="gain-val" class="val">1.0×</span>
+        </div>
       </div>
-      <div id="device-warn" class="device-warn" hidden></div>
-      <div id="level-warn" class="level-warn" hidden></div>
-      <!-- 입력 게인: 소리가 작아 전사가 안 될 때 앱에서 신호를 증폭한다 -->
-      <div class="row" style="align-items:center; margin-top:8px;">
-        <span class="label" style="min-width:88px; margin:0;" data-i18n="gainLabel">입력 게인</span>
-        <input type="range" id="gain" min="1" max="8" step="0.5" value="1" />
-        <span id="gain-val" class="val">1.0×</span>
-      </div>
-    </div>
 
-    <!-- 모바일 자막 주소 / QR -->
-    <div class="card">
-      <div class="label" data-i18n="mobileTitle">모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기</div>
-      <div class="row" style="align-items:center;">
-        <button id="btn-mobile" class="primary" data-i18n="extractMobile">📱 모바일 주소 / QR 추출</button>
-        <div id="mobile-info" style="flex:1;"></div>
+      <!-- 번역 언어 선택 (최대 3개, 행별 색상) -->
+      <div class="card">
+        <div class="label" data-i18n="langCardHint">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
+        <div class="row" id="lang-slots"></div>
+        <div class="muted" id="language-msg" style="margin-top:8px;"></div>
       </div>
     </div>
 
-    <!-- 번역 언어 선택 (최대 3개, 행별 색상) -->
-    <div class="card">
-      <div class="label" data-i18n="langCardHint">번역 언어 — 최대 3개까지 동시 출력 (입력은 자동 감지) · 비용은 언어 수만큼 증가</div>
-      <div class="row" id="lang-slots"></div>
-      <div class="muted" id="language-msg" style="margin-top:8px;"></div>
-    </div>
+    <!-- 오른쪽 열: 모바일 자막 주소 + 설교 원고(이어서) -->
+    <div class="col">
+      <!-- 모바일 자막 주소 / QR -->
+      <div class="card">
+        <div class="label" data-i18n="mobileTitle">모바일 자막 주소 (교인용) — 폰에서 자기 언어로 자막 보기</div>
+        <div class="row" style="align-items:center;">
+          <button id="btn-mobile" class="primary" data-i18n="extractMobile">📱 모바일 주소 / QR 추출</button>
+          <div id="mobile-info" style="flex:1;"></div>
+        </div>
+      </div>
 
-    <!-- 설교 원고 (전사 교정용) -->
-    <div class="card">
-      <div class="label" data-i18n="scriptCardHint">설교 원고 — 붙여넣으면 고유명사를 뽑아 전사를 자동 교정 (예: 티브리어→히브리어)</div>
-      <textarea id="script-text" rows="2" data-i18n-ph="scriptPlaceholder"
-        style="width:100%; box-sizing:border-box; background:#1c1f27; color:#e6e8ec; border:1px solid #333; border-radius:8px; padding:10px; font-size:14px; resize:vertical;"></textarea>
-      <div class="row" style="margin-top:8px; align-items:center;">
-        <button id="btn-script" class="primary" data-i18n="applyScript">원고 적용</button>
-        <button id="btn-script-clear" data-i18n="clear">지우기</button>
-        <span id="script-msg" class="muted"></span>
+      <!-- 설교 원고 (전사 교정용) -->
+      <div class="card">
+        <div class="label" data-i18n="scriptCardHint">설교 원고 — 붙여넣으면 고유명사를 뽑아 전사를 자동 교정 (예: 티브리어→히브리어)</div>
+        <textarea id="script-text" rows="2" data-i18n-ph="scriptPlaceholder"
+          style="width:100%; box-sizing:border-box; background:#1c1f27; color:#e6e8ec; border:1px solid #333; border-radius:8px; padding:10px; font-size:14px; resize:vertical;"></textarea>
+        <div class="row" style="margin-top:8px; align-items:center;">
+          <button id="btn-script" class="primary" data-i18n="applyScript">원고 적용</button>
+          <button id="btn-script-clear" data-i18n="clear">지우기</button>
+          <span id="script-msg" class="muted"></span>
+        </div>
       </div>
     </div>
 
