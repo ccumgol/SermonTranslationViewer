@@ -188,6 +188,7 @@
       <div class="controls">
         <button id="btn-broadcast" class="primary">▶ 방송 시작</button>
         <button id="btn-open-projection" class="primary" data-i18n="openProjection">🖥 송출 창 열기</button>
+        <button id="btn-copy-obs" data-i18n="copyObsUrl">📋 OBS URL 복사</button>
         <button id="btn-reset" data-i18n="resetScreen">↺ 화면 리셋</button>
         <button id="btn-output" class="danger">⏹ 송출 가리기</button>
 
@@ -225,6 +226,7 @@
           </select>
         </div>
       </div>
+      <div class="muted" id="obs-msg" style="margin-top:8px; font-size:12px; line-height:1.5;"></div>
     </div>
 
     <div class="card">
@@ -296,6 +298,10 @@
         scriptPlaceholder: "설교 원고를 여기에 붙여넣으세요. 성경 고유명사·인명·지명이 정확히 인식되도록 도와줍니다.",
         applyScript: "원고 적용", clear: "지우기",
         outputControl: "송출 제어", openProjection: "🖥 송출 창 열기",
+        copyObsUrl: "📋 OBS URL 복사",
+        obsCopied: "✅ 복사됨:", obsCopyFail: "아래 주소를 복사하세요:",
+        obsHint: "OBS '브라우저' 소스 URL 에 붙여넣기 (폭 1920·높이 1080, 배경은 스타일에서 그린스크린 선택 후 OBS 크로마키 필터 권장)",
+        obsOtherPc: "다른 PC 의 OBS 면:",
         resetScreen: "↺ 화면 리셋", fontSize: "폰트 크기", bgColor: "배경색",
         padding: "안여백(테두리 간격)", subtitleRegion: "자막 영역",
         regionFull: "전체 화면", regionBottom: "하단 밴드", regionTop: "상단 밴드",
@@ -338,6 +344,10 @@
         scriptPlaceholder: "Paste the sermon script here. Helps recognize Bible names, people and places accurately.",
         applyScript: "Apply script", clear: "Clear",
         outputControl: "Output control", openProjection: "🖥 Open output window",
+        copyObsUrl: "📋 Copy OBS URL",
+        obsCopied: "✅ Copied:", obsCopyFail: "Copy this URL:",
+        obsHint: "Paste into an OBS 'Browser' source URL (1920x1080; for a clean key set a green-screen background in Style, then add OBS's Chroma Key filter)",
+        obsOtherPc: "For OBS on another PC:",
         resetScreen: "↺ Reset screen", fontSize: "Font size", bgColor: "Background",
         padding: "Padding (edge inset)", subtitleRegion: "Subtitle region",
         regionFull: "Full screen", regionBottom: "Bottom band", regionTop: "Top band",
@@ -701,6 +711,37 @@
         "popup=yes,width=1280,height=720,menubar=no,toolbar=no,location=no,status=no"
       );
       if (win) win.focus();
+    };
+
+    // ── OBS 브라우저 소스 URL 복사 ──
+    // OBS 의 '브라우저' 소스 URL 칸에 붙여넣을 송출 화면(/) 주소를 클립보드에 복사한다.
+    // 같은 PC 의 OBS 는 localhost, 다른 PC 의 OBS 는 LAN IP 주소가 필요하다.
+    const btnCopyObs = document.getElementById("btn-copy-obs");
+    const obsMsg = document.getElementById("obs-msg");
+    async function copyText(text) {
+      try { await navigator.clipboard.writeText(text); return true; }
+      catch (e) {
+        try {  // 비보안 컨텍스트 등 clipboard API 불가 시 폴백
+          const ta = document.createElement("textarea");
+          ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+          document.body.appendChild(ta); ta.select();
+          const ok = document.execCommand("copy"); document.body.removeChild(ta); return ok;
+        } catch (e2) { return false; }
+      }
+    }
+    btnCopyObs.onclick = async () => {
+      const port = location.port || "8000";
+      const localUrl = `${location.protocol}//localhost:${port}/`;
+      const copied = await copyText(localUrl);
+      let lanUrl = "";
+      try {
+        const info = await fetch("/lan-info").then(r => r.json());
+        if (info.primary && !String(info.primary).startsWith("127.")) lanUrl = `http://${info.primary}:${info.port}/`;
+      } catch (e) { /* 오프라인·서버 미가동 시 무시 */ }
+      const parts = [`${copied ? t("obsCopied") : t("obsCopyFail")} ${localUrl}`, t("obsHint")];
+      if (lanUrl) parts.push(`${t("obsOtherPc")} ${lanUrl}`);
+      // 값은 location·서버 lan-info 유래(신뢰) — 안전하게 textContent 로만 렌더
+      obsMsg.textContent = parts.join(" · ");
     };
 
     function refreshBroadcastBtn() {
